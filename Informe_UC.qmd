@@ -26,6 +26,10 @@ header-includes:
   - \usepackage{pdflscape}
   - \usepackage{tabularx}
   - \usepackage{array}
+  - \setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+  - \setlength{\floatsep}{6pt plus 2pt minus 2pt}
+  - \setlength{\intextsep}{6pt plus 2pt minus 2pt}
+  - \captionsetup{skip=4pt}
 execute:
   echo: false
 link-citations: true
@@ -59,7 +63,11 @@ link-citations: true
 
 ## Resumen ejecutivo
 
-Escribe aquí el resumen ejecutivo del informe (máximo 250 palabras).
+Escribe aquí el resumen ejecutivo del informe (máximo 250 palabras).Predecir el caudal de un río para el día siguiente puede ayudar a planificar el uso del agua, pero la alternativa más simple, suponer que mañana el río llevará lo mismo que hoy (persistencia), ya es difícil de superar. En este trabajo nos preguntamos cuánto mejora un modelo estadístico frente a esa referencia, usando datos diarios de 30 cuencas de CAMELS-CL ubicadas entre los 33° y 40° de latitud sur, con información de caudal, precipitación y temperatura entre 2000 y 2016.
+
+Comparamos una regresión penalizada (Ridge), un modelo aditivo generalizado (GAM) y un Random Forest. Los modelos se eligieron con siete ventanas de validación entre 2006 y 2012, y luego se evaluaron una sola vez en 2013–2016. El Random Forest fue el mejor en ambos períodos: en la prueba final redujo el error absoluto medio en un 35,1 % respecto de la persistencia (intervalo bootstrap al 95 %: 30,3 % a 38,5 %) y le ganó en 29 de las 30 cuencas, a pesar de que ese período coincidió con la megasequía. El GAM mejoró un 25,6 % y la regresión penalizada un 14,1 %.
+
+Por esto recomendamos el Random Forest, sobre todo para cuencas bajas y lluviosas, donde las mejoras son mayores. Su principal limitación es que casi no mejora a la persistencia en caudales bajos ni en cuencas de alta montaña o con embalses, donde el caudal depende del deshielo o de la regulación, información que no está en nuestros datos.
 
 ## Problema y datos
 \underline{Contexto y problema}
@@ -74,42 +82,9 @@ Para responder la pregunta de investigación se comparan distintos procedimiento
 
 Los datos provienen de CAMELS-CL (Catchment Attributes and Meteorology for Large Sample Studies, Chile), la primera base de datos hidrometeorológica y de atributos a gran escala desarrollada para Chile. Esta reúne información de 516 cuencas chilenas y fue presentada por Alvarez-Garreton et al. (2018).
 
-En particular, los datos del informe corresponden a un subconjunto de datos de CAMELS-CL proporcionado para el **Caso 01 del curso EYP3407**, cuya copia de datos fue preparada el 12 de octubre 2026. Dicho subconjunto comprende 30 cuencas ubicadas entre los 33° y 40° de latitud sur, seleccionadas según la mayor cantidad de días con caudal observado entre 2000 y 2012, utilizando el identificador de cuenca como criterio de desempate. Se dispone de cuatro archivos originales con la información de los caudales $Q$, la precipitación y temperatura registrada, además de un diccionario con atributos adicionales. Todos los datos registrados corresponden a la ventana de tiempo generada entre el 1 de enero de 2000 y el 31 de diciembre de 2016 (Tabla \ref{tab:archivos}).
+En particular, los datos del informe corresponden a un subconjunto de datos de CAMELS-CL proporcionado para el **Caso 01 del curso EYP3407**, cuya copia de datos fue preparada el 12 de octubre 2026. Dicho subconjunto comprende **30 cuencas** ubicadas entre los 33° y 40° de latitud sur, seleccionadas según la mayor cantidad de días con caudal observado entre 2000 y 2012, utilizando el identificador de cuenca como criterio de desempate. Se dispone de **cuatro archivos originales** con la información de los caudales $Q$, la precipitación y temperatura registrada, además de un diccionario con atributos adicionales. Todos los datos registrados corresponden a la ventana de tiempo generada entre el 1 de enero de 2000 y el 31 de diciembre de 2016.
 
-```{=latex}
-\begin{table}[H]
-\centering
-\small
-\renewcommand{\arraystretch}{1.15}
 
-\begin{tabularx}{\textwidth}{|p{4.1cm}|X|r|}
-\hline
-\textbf{Archivo} & \textbf{Descripción} & \textbf{Observaciones} \\
-\hline
-
-\texttt{caudal\_m3s.csv} &
-Caudal diario de las 30 cuencas, expresado en m$^3$/s. &
-6.210 \\
-
-\texttt{precipitacion\_mm.csv} &
-Precipitación diaria CR2MET, expresada en mm/día. &
-6.210 \\
-
-\texttt{temperatura\_media\_c.csv} &
-Temperatura media diaria CR2MET, expresada en $^\circ$C. &
-6.210 \\
-
-\texttt{atributos.csv} &
-Atributos físicos, climáticos e hidrológicos de las cuencas. &
-30 \\
-\hline
-
-\end{tabularx}
-
-\caption{Archivos originales utilizados en el análisis}
-\label{tab:archivos}
-\end{table}
-```
 \underline{Población, unidad de observación y variable respuesta}
 
 La **población de estudio** corresponde a las observaciones diarias de las 30 cuencas chilenas incluidas en el subconjunto de datos entregado en la respectiva ventana de tiempo.
@@ -120,23 +95,23 @@ La **variable respuesta** corresponde al caudal observado en la cuenca $i$ el d�
 
 \underline{Muestra analítica}
 
-Para construir la muestra analítica (Figura \ref{fig:diagrama}) se reestructuró inicialmente $\texttt{caudal\_m3s.csv}$ que contiene 6.210 filas y 31 columnas (una con la fecha y 30 con los identificadores de las cuencas), de tal manera que en el resultado, cada fila contenga el par (ID cuenca - fecha $t$), generando un total de 186.300 observaciones (Tabla \ref{tab:muestra}).
+Para construir la muestra analítica (Figura \ref{fig:diagrama}) se reestructuró inicialmente $\texttt{caudal\_m3s.csv}$ que contiene **6.210 filas y 31 columnas** (una con la fecha y 30 con los identificadores de las cuencas), de tal manera que en el resultado, cada fila contenga el par (ID cuenca - fecha $t$), generando un total de **186.300 observaciones** (Tabla \ref{tab:muestra}).
 
 Posteriormente, las tres series se integraron mediante el identificador de cuenca y la fecha, obteniendo una base con la información del caudal de la cuenca $Q$, la precipitación $P$ y la temperatura media $T$, estableciendo relaciones uno a uno entre registros. Se verificó la unicidad de las claves y la conservación de las 186.300 observaciones después de cada unión, manteniendo las 30 cuencas originales, sin duplicados.
 
 Se identifican 3.038 valores faltantes del caudal y una observación con valor cero correspondiente a la cuenca del río Toltén, en la Región de La Araucanía, el 1 de enero de 2003. La cuenca del río Toltén presenta un clima templado cálido lluvioso con influencia mediterránea en sus sectores medio y bajo, y un clima templado frío lluvioso con influencia mediterránea en su sector precordillerano (Dirección General de Aguas [DGA], 2004, p. 5). Considerando estas características, el registro de caudal cero fue identificado como anómalo. Dado que el análisis contempla transformaciones logarítmicas, se decidió tratar dicho registro como un valor faltante, sin confirmar un error de medición. Con ello, se obtuvo un total de 3.039 registros de caudal faltantes.
 
 ```{=latex}
-\begin{figure}[H]
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{Diagrama.png}
+\includegraphics[width=0.7\textwidth]{Diagrama.png}
 \caption{Esquema de construcción de la muestra}
 \label{fig:diagrama}
 \end{figure}
 ```
 
 ```{=latex}
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \small
 \begin{tabular}{|p{11cm}|r|}
@@ -174,7 +149,7 @@ Por ello, es importante mencionar que las variables: $Q_t$, $Q_{t-1}$, $P_t$, $P
 Se distinguió además el identificador de cada cuenca de sus características físicas. En los modelos principales, cada cuenca se representa mediante su código, mientras que los atributos físicos estables se utilizaron solo para describir los resultados y en un análisis de sensibilidad.
 
 ```{=latex}
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \fontsize{6.5}{8}\selectfont
 \renewcommand{\arraystretch}{1.15}
@@ -263,12 +238,17 @@ Se eligió comenzar la validación en 2006 para disponer de aproximadamente seis
 Los resultados de estas validaciones se utilizaron para seleccionar la configuración de cada modelo y determinar cuál presentaba el mejor desempeño. Una vez realizada esta selección, los modelos se ajustaron nuevamente utilizando todos los datos disponibles del período de desarrollo. Finalmente, se evaluaron en la prueba final de 2013–2016, sin utilizar los resultados de este período para modificar las decisiones tomadas anteriormente.
 
 ```{=latex}
-\begin{figure}[H]
+\noindent
+\begin{minipage}[t]{0.45\textwidth}
+\vspace{0pt}
 \centering
-\includegraphics[width=0.7\textwidth]{Diseño.png}
-\caption{Esquema temporal de entrenamiento, validación y prueba final}
+\includegraphics[width=\linewidth]{Diseño.png}
+\captionof{figure}{Esquema temporal de entrenamiento, validación y prueba final}
 \label{fig:diseno}
-\end{figure}
+\end{minipage}% <-- El % evita que se pongan uno abajo del otro
+\hfill
+\begin{minipage}[t]{0.52\textwidth}
+\vspace{0pt}
 ```
 
 \underline{Información disponible al momento de predecir}
@@ -276,6 +256,10 @@ Los resultados de estas validaciones se utilizaron para seleccionar la configura
 Para la $i$-ésima cuenca, la predicción $\hat{Q}_{i, t+1}$ se realiza al cierre del día $t$. En consecuencia, los predictores deben ser conocidos al momento de realizar la predicción, tal como fue mencionado en el apartado anterior.
 
 Las precipitaciones acumuladas de 3, 7 y 30 días y la temperatura promedio de 7 días se construyen utilizando exclusivamente observaciones hasta $t$, por lo que no se incurre en una fuga de información futura al usar dichas variables como predictores. El caudal del día siguiente $Q_{t+1}$ se reserva para construir la respuesta y evaluar las predicciones, pues incorporarlo en los modelos implicaría predecir el futuro con información del futuro.
+
+```{=latex}
+\end{minipage}
+```
 
 Se supone que la información meteorológica del día $t$ se encuentra disponible al finalizar dicho día, de manera que puede ser utilizada para predecir el caudal del día siguiente. Dado que los productos meteorológicos utilizados corresponden a reconstrucciones posteriores, el ejercicio constituye una evaluación retrospectiva bajo este supuesto de disponibilidad y no mide el desempeño operativo de un pronóstico en tiempo real.
 
@@ -324,19 +308,12 @@ La selección se realizó utilizando exclusivamente los resultados del período 
 \underline{Construcción de la especificación base}
 
 Antes de ajustar los tres procedimientos, se construyó una especificación base mediante una secuencia de regresiones lineales en la que la información 
-se incorporó de manera progresiva, con el fin de identificar qué aportaba cada grupo de predictores. Se partió de un modelo que solo considera la tendencia 
-reciente del río (cambio_hoy) y su nivel actual ($\log Q_t$), con un mismo efecto para todas las cuencas.
- Este modelo tuvo un desempeño prácticamente igual al de persistencia, lo que mostró que un comportamiento común para las 30 cuencas no era suficiente.
-
-Al permitir que cada cuenca tuviera su propia velocidad de descenso del caudal, y luego su propia respuesta a la precipitación,
- el error bajó de forma consistente. En la validación de 2012 este modelo redujo el MAE en torno a un 11 % respecto de persistencia 
- y superó a esta referencia en 26 de las 30 cuencas. Esto confirmó que la heterogeneidad entre cuencas es un componente central
-  del problema. Finalmente, se incorporaron la temperatura del día, la temperatura promedio de los últimos 7 días y el mes, con el fin de representar la estacionalidad y el deshielo. Aunque en la regresión lineal estas variables no mejoraron de forma consistente el desempeño, se mantuvieron en la especificación común, ya que los modelos más flexibles podrían aprovechar relaciones no lineales o interacciones con ellas. Toda esta construcción utilizó exclusivamente datos del período de desarrollo.
+se incorporó de manera progresiva, con el fin de identificar qué aportaba cada grupo de predictores (ver Anexo técnico).
 
 La especificación resultante se utilizó como punto de partida común. Los tres procedimientos utilizan los mismos once predictores, todos disponibles al cierre del día $t$; lo que difiere entre ellos es la forma en que se incorporan. M1 emplea exactamente esta especificación, mientras que M2 y M3 la representan con mayor flexibilidad, lo que les permite capturar relaciones no lineales e interacciones (Tabla \ref{tab:predictores}). De este modo, las diferencias de desempeño entre procedimientos pueden atribuirse a su estructura y no a la información utilizada.
 
 ```{=latex}
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \footnotesize
 \renewcommand{\arraystretch}{1.15}
@@ -417,7 +394,7 @@ Para cada modelo se definió una grilla de valores para sus hiperparámetros, lo
 Para M1 se comparan 16 combinaciones de hiperparámetros, considerando coeficientes asociados a Ridge ($\alpha = 0$), Lasso ($\alpha = 1$), y ocho valores distintos de $\lambda$. Con $\lambda = 0$ ambas alternativas coinciden con la regresión lineal sin penalización, por lo que en la práctica se evaluaron 15 modelos distintos. Una grilla inicial con valores de $\lambda$ entre 1 y 10 se descartó porque en todos los casos producía un modelo equivalente a persistencia, con todos los coeficientes anulados.
 
 ```{=latex}
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \small
 \renewcommand{\arraystretch}{1.2}
@@ -455,16 +432,16 @@ Para M3 se evalúan distintas combinaciones de dos hiperparámetros:
 - $\texttt{mtry}$: número de predictores considerados aleatoriamente en cada división de los árboles.
 - $\texttt{nodesize}$: establece el tamaño mínimo de los nodos terminales.
 
-Inicialmente se evaluaron tres valores de $\texttt{mtry}$ (2, 3 y 5) y dos de $\texttt{nodesize}$ (5 y 25), obteniendo seis configuraciones. Como la mejor configuración inicial correspondía al mayor valor de $\texttt{mtry}$ de la grilla, se amplió la búsqueda con una séptima configuración ($\texttt{mtry}=8$, $\texttt{nodesize}=5$), que mejoró levemente el desempeño en desarrollo (36,6 % frente a 36,0 % de mejora en MAE) y fue la configuración seleccionada.
-
-En todos los ajustes se utilizaron 200 árboles y una submuestra de entrenamiento de 20.000 observaciones por árbol, manteniendo estos valores fijos durante la comparación de configuraciones.
-
-En total, el presupuesto de búsqueda comprendió 16 configuraciones de M1, 7 de M2 y 7 de M3. Las configuraciones se compararon mediante su desempeño predictivo en las siete ventanas de validación, siguiendo los criterios de mejora relativa del MAE y RMSE definidos en el apartado de Diseño de evaluación.
+Inicialmente se evaluaron tres valores de $\texttt{mtry}$ (2, 3 y 5) y dos de $\texttt{nodesize}$ (5 y 25), obteniendo seis configuraciones. Como la mejor configuración
+ inicial correspondía al mayor valor de $\texttt{mtry}$ de la grilla, se amplió la búsqueda con una séptima configuración ($\texttt{mtry}=8$,
+  $\texttt{nodesize}=5$), que mejoró levemente el desempeño en desarrollo (36,6 % frente a 36,0 % de mejora en MAE) y fue la configuración seleccionada.En todos los ajustes se utilizaron 200 árboles y una submuestra de entrenamiento de 20.000 observaciones por árbol, manteniendo estos valores fijos durante la 
+  comparación de configuraciones. En total,
+   el presupuesto de búsqueda comprendió 16 configuraciones de M1, 7 de M2 y 7 de M3. Las configuraciones se compararon mediante su desempeño predictivo en las siete ventanas de validación, siguiendo los criterios de mejora relativa del MAE y RMSE definidos en el apartado de Diseño de evaluación.
 
 ## Resultados
 Para comparar los modelos, lo primero que se hizo fue analizar cada desempeño en el conjunto de desarrollo. 
 Cuyas particiones ya fueron establecidas y detalladas en la sección de diseño de evaluación. 
-La tabla 1 va a resumir cada rendimiento de los 3 modelos que se realizaron y las dos referencias, 
+La Tabla \ref{tab:comparacion} (izquierda) va a resumir cada rendimiento de los 3 modelos que se realizaron y las dos referencias, 
 o sea persistencia y estacional, todos ordenados por su mejora mediana en el MAE. 
 Dentro de esta tabla la columna "Mejora MAE" indica el porcentaje en que el modelo reduce su error absoluto respecto a la persistencia, 
 mientras que la columna "Peor año (MAE)" mostrará el desempeño del modelo en el año donde logró la menor mejora y "Ríos donde gana" va a indicar en cuántas de nuestras combinaciones de río y año el modelo superó la persistencia. 
@@ -472,13 +449,13 @@ Y como se puede observar, Random Forest fue el que mejor desempeño obtuvo, redu
 mientras que la regresión penalizada solo tuvo una mejora del 14.1%. La referencia estacional nos indicó un error negativo, reafirmando que teniendo conocimiento sobre cuánta agua trae el río hoy es la información más importante para predecir el de mañana.
 Ya habiendo seleccionado el modelo de Random Forest, se evaluó en el conjunto de testeo final que contiene desde el año 2013 hasta el 2016, 
 periodo el cual nuestro modelo nunca vio y que además coincidió con una megasequía en la zona central de nuestro país. 
-La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.1% en MAE y un 26.5% en RMSE frente a la persistencia. 
+La Tabla \ref{tab:comparacion} (derecha) muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.1% en MAE y un 26.5% en RMSE frente a la persistencia. 
 En esta misma tabla también se puede observar la columna "Ríos gana" que va a contar en cuántas de las 30 cuencas el modelo superó la persistencia y los "Días evaluados" que sería la cantidad de días con datos válidos que se utilizaron en la comparación. GAM por su parte, 
 obtuvo una mejora del 25.6%, mientras que la regresión penalizada se quedó con un 14.1% de mejora. Estos resultados son muy relevantes para demostrar que nuestro modelo tiene una capacidad predictiva que se mantiene en el tiempo, 
 incluso cuando las condiciones climáticas cambian drásticamente hacia un clima más seco.
 
 ```{=latex}
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \fontsize{7}{8.5}\selectfont
 \renewcommand{\arraystretch}{1.2}
@@ -510,7 +487,7 @@ Estacional & -276.3\% & -123.6\% & -439.6\% & 0 \\
 % TABLA DERECHA
 \begin{minipage}[t]{0.48\textwidth}
 \centering
-\textbf{Tabla 2. Prueba final (2013-2016)}
+\textbf{Prueba final (2013--2016)}
 \vspace{0.2cm}
 
 \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
@@ -533,21 +510,41 @@ Estacional & -265.9\% & -107.7\% & 0 & 41.961 \\
 \caption{Mejora mediana frente a persistencia en desarrollo (promedio de 7 ventanas) y en la prueba final. La columna de la derecha de cada tabla indica en cuántos pares río–año o cuencas el modelo superó a la persistencia.}
 \label{tab:comparacion}
 \end{table}
+```
 
 Con la finalidad de comprender en que se basa Random Forest para realizar sus predicciones, 
-la tabla 3 nos indica la importancia de variables. 
+la Tabla \ref{tab:importancia} nos indica la importancia de variables. 
 Para calcular esta relevancia, el modelo usa una técnica de permutación en la cual se desordenan aleatoriamente los valores de una variable, 
 para así eliminar su relación con el caudal y medir cuánto aumenta el error. 
 La columna %IncMSE mide que tanto aumenta el error al eliminar esa variable. Y 
 como se puede observar, el modelo se apoya mucho en la cuenca, seguida de por el nivel del río y la memoria a corto plazo. 
 Esto nos demuestra que el modelo captura la heterogeneidad de los atributos físicos de cada río.
 
-\begin{table}[H]
+```{=latex}
+\noindent
+\begin{minipage}[t]{0.50\textwidth}
+\vspace{0pt}
+```
+
+Para ver cómo cambia el rendimiento del modelo entre cuencas, la Figura \ref{fig-altura} muestra la mejora
+en MAE de cada cuenca en la prueba final según su altura media. Los puntos azules son cuencas sin embalses grandes
+ los naranjos, con embalse. Se observa que el modelo funciona mejor en las cuencas bajas (bajo 1.000 m), donde varias
+ superan el 40 % de mejora, y que a medida que aumenta la altura la mejora va disminuyendo, llegando a valores cercanos
+  a cero en las cuencas más altas. Algo parecido pasa con las cuencas con embalse, donde la mejora también es menor.
+ Esto tiene sentido, ya que en esas cuencas el caudal depende del deshielo o de la regulación, cosas que el modelo no
+ alcanza a captar con las variables que usamos.
+
+```{=latex}
+\end{minipage}% <-- El % evita que se pongan uno abajo del otro
+\hfill
+\begin{minipage}[t]{0.46\textwidth}
+\vspace{0pt}
 \centering
 \fontsize{8}{10}\selectfont
 \renewcommand{\arraystretch}{1.1}
-\setlength{\tabcolsep}{6pt} 
+\setlength{\tabcolsep}{6pt}
 
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{|l|c|}
 \hline
 \textbf{Variable} & \textbf{\%IncMSE (Aumento del error al permutar)} \\
@@ -574,31 +571,22 @@ lluvia\_7d & 8.85 \\
 \hline
 temp\_7d & 8.29 \\
 \hline
-\end{tabular}
-\caption{Importancia de las variables en el modelo Random Forest.}
+\end{tabular}}
+\captionof{table}{Importancia de las variables en el modelo Random Forest.}
 \label{tab:importancia}
-\end{table}
-
-
-
-Para ver cómo cambia el rendimiento del modelo entre cuencas, la Figura \ref{fig-altura} muestra la mejora 
-en MAE de cada cuenca en la prueba final según su altura media. Los puntos azules son cuencas sin embalses grandes 
- los naranjos, con embalse. Se observa que el modelo funciona mejor en las cuencas bajas (bajo 1.000 m), donde varias 
- superan el 40 % de mejora, y que a medida que aumenta la altura la mejora va disminuyendo, llegando a valores cercanos
-  a cero en las cuencas más altas. Algo parecido pasa con las cuencas con embalse, donde la mejora también es menor.
- Esto tiene sentido, ya que en esas cuencas el caudal depende del deshielo o de la regulación, cosas que el modelo no 
- alcanza a captar con las variables que usamos.
+\end{minipage}
+```
 
 Para medir la incertidumbre del 35,1 % de mejora en la prueba, usamos un bootstrap por bloques de 30 días con 
 1000 réplicas. Remuestreamos bloques de días consecutivos manteniendo juntas las 30 cuencas de cada fecha, 
 porque un día se parece al siguiente y una misma lluvia afecta a varios ríos a la vez. La Figura
- \ref{fig-altura-bootstrap} muestra el resultado: el intervalo al 95 % para la mejora en MAE va de 30,3 % a 38,5 % 
+ \ref{fig-bootstrap} muestra el resultado: el intervalo al 95 % para la mejora en MAE va de 30,3 % a 38,5 % 
  (y de 22,4 % a 32,3 % para el RMSE), y ninguna réplica quedó en cero o por debajo. 
  Hay que tener en cuenta que el modelo no se volvió a ajustar en cada réplica, así que el
   intervalo solo refleja la variación por los días de prueba y no la incertidumbre de haber elegido y
    entrenado el modelo.
 
-\begin{figure}[H]
+\begin{figure}[!htbp]
 \centering
 % GRÁFICO IZQUIERDO: Altura
 \begin{minipage}[t]{0.48\textwidth}
@@ -618,22 +606,57 @@ porque un día se parece al siguiente y una misma lluvia afecta a varios ríos a
 \label{fig-altura-bootstrap}
 \end{figure}
 
+```{=latex}
+\noindent
+\begin{minipage}[t]{0.50\textwidth}
+\vspace{0pt}
+```
+
+Para revisar el desempeño en caudales altos y bajos, clasificamos los días de prueba según los percentiles 10, 90 y 99 del caudal de cada río, calculados solo con datos de desarrollo (Tabla \ref{tab:caudales}). M3 mantiene una buena mejora en caudales altos (33,4 %) y extremos (24,6 %), aunque esta última es menor y se basa en solo 137 días. En cambio, en caudales bajos ningún modelo le gana a la persistencia: M3 prácticamente empata (-0,7 %) y M1 y M2 empeoran claramente. Esto tiene sentido, porque cuando el río está bajo cambia muy poco de un día a otro y la persistencia ya acierta casi siempre. Además, cerca del 23 % de los días de prueba quedó bajo el p10 de desarrollo, más del doble de lo esperado, lo que refleja la sequía de 2013–2016.
+
+```{=latex}
+\end{minipage}% <-- El % evita que se pongan uno abajo del otro
+\hfill
+\begin{minipage}[t]{0.46\textwidth}
+\vspace{0pt}
+\centering
+\fontsize{8}{10}\selectfont
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{|l|r|c|c|c|}
+\hline
+\textbf{Tipo de día} & \textbf{Días} & \textbf{M1} & \textbf{M2} & \textbf{M3} \\
+\hline
+Bajo ($\leq$ p10) & 9.718 & -26.1\% & -29.8\% & -0.7\% \\
+\hline
+Normal & 30.076 & 15.5\% & 23.1\% & \textbf{38.4\%} \\
+\hline
+Alto ($\geq$ p90) & 2.167 & 15.9\% & 30.1\% & \textbf{33.4\%} \\
+\hline
+Extremo ($\geq$ p99) & 137 & 14.4\% & 23.5\% & \textbf{24.6\%} \\
+\hline
+\end{tabular}
+\captionof{table}{Mejora mediana en MAE frente a persistencia en la prueba final, según tipo de caudal. Los umbrales son percentiles de cada río calculados con desarrollo.}
+\label{tab:caudales}
+\end{minipage}
+```
+
 \subsection*{Análisis de sensibilidad}
 
-A través de análisis de sensibilidad se evaluaron dos decisiones de representación de los datos y una de validación, en todas ellas con los datos de desarrollo (Tablas~\ref{tab:sens-s1s3} y~\ref{tab:sens-s2}).
+A través de análisis de sensibilidad se evaluaron dos decisiones de representación de los datos y una de validación, en todas ellas con los datos de desarrollo (Tablas \ref{tab:sens-s1s3} y \ref{tab:sens-s2}).
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \small
 \caption{Sensibilidades de representación de los datos para M3 (desarrollo, promedio de las 7 ventanas 2006--2012). Mejora relativa frente a persistencia.}
 \label{tab:sens-s1s3}
-\begin{tabularx}{\textwidth}{Xcccc}
+\begin{tabularx}{\textwidth}{l*{4}{>{\centering\arraybackslash}X}}
 \toprule
 Variante & Mejora MAE & Mejora RMSE & Peor año (MAE) & Dif. MAE \\
 \midrule
 M3 ganador (cambio log, código de cuenca) & 0,366 & 0,310 & 0,297 & --- \\
-S1: respuesta en m$^3$/s                  & 0,243 & 0,225 & 0,144 & $-0{,}123$ \\
-S3: atributos físicos en vez de cuenca    & 0,354 & 0,295 & 0,300 & $-0{,}012$ \\
+S1: respuesta en m$^3$/s & 0,243 & 0,225 & 0,144 & $-0{,}123$ \\
+S3: atributos físicos en vez de cuenca & 0,354 & 0,295 & 0,300 & $-0{,}012$ \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -642,38 +665,30 @@ S3: atributos físicos en vez de cuenca    & 0,354 & 0,295 & 0,300 & $-0{,}012$ 
 
 \textbf{S3: identificación de la cuenca.} Cuando reemplazamos el código de cuenca por atributos físicos estables (área, elevación media, pendiente, fracción de bosque y de nieve, presencia de embalse y latitud), la mejora en MAE baja levemente, de 0,366 a 0,354. Esto indica que el modelo no depende de memorizar cada cuenca, pues gran parte de lo que aprende está explicado por sus características físicas.
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \small
-\caption{Sensibilidad de validación: configuración elegida en cada familia al validar con 7 ventanas (2006--2012) o con 3 ventanas (2010--2012). Mejora en MAE frente a persistencia.}
+\caption{Sensibilidad de validación: configuración elegida en cada familia al validar con 7 ventanas (2006--2012) o con 3 ventanas (2010--2012). Mejora en MAE frente a persistencia. En negrita, la familia elegida con cada esquema.}
 \label{tab:sens-s2}
-\begin{tabularx}{\textwidth}{Xcccc}
+\begin{tabularx}{\textwidth}{l*{4}{>{\centering\arraybackslash}X}}
 \toprule
  & \multicolumn{2}{c}{7 ventanas} & \multicolumn{2}{c}{3 ventanas} \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
 Familia & Configuración & Mejora MAE & Configuración & Mejora MAE \\
 \midrule
-M1 ridge/lasso   & ridge, $\lambda=0{,}001$ & 0,136 & ridge, $\lambda=0{,}03$ & 0,133 \\
-M2 GAM           & C\_k10                   & 0,270 & C\_k10                  & 0,226 \\
-M3 random forest & mtry 8, nodo 5           & \textbf{0,366} & mtry 8, nodo 5 & \textbf{0,340} \\
+M1 ridge/lasso & ridge, $\lambda=0{,}001$ & 0,136 & ridge, $\lambda=0{,}03$ & 0,133 \\
+M2 GAM & C\_k10 & 0,270 & C\_k10 & 0,226 \\
+M3 random forest & mtry 8, nodo 5 & \textbf{0,366} & mtry 8, nodo 5 & \textbf{0,340} \\
 \bottomrule
 \end{tabularx}
-
-\vspace{2pt}
-{\footnotesize En negrita, la familia elegida con cada esquema: M3 en ambos casos.}
-\end{table}
-
-\vspace{2pt}
-{\footnotesize En negrita, la familia elegida con cada esquema: M3 en ambos casos.}
 \end{table}
 
 \textbf{S2: período de validación.} Al elegir los modelos con 3 ventanas (2010--2012) en lugar de 7 (2006--2012), la elección es estable: M3 sigue siendo la familia elegida, con la misma configuración, y M2 también mantiene la suya. Por lo tanto, la recomendación no depende de los años usados para validar.
 
-
 ## Discusión
 
 Para responder a nuestra pregunta de investigación, los resultados obtenidos demuestran que sí es posible mejorar la predicción del caudal 
-del día siguiente contra la persistencia. Random Forest redujo el error en un 35.9% en el período de prueba final, superando 
+del día siguiente contra la persistencia. Random Forest redujo el error en un 35.1% en el período de prueba final, superando 
 por bastante a M1 y M2. Esto se puede explicar debido a la relación entre las variables asociadas al clima y el caudal no es lineal, 
 sino que está llena de umbrales e interacciones complejas. Mientras que la regresión penalizada asume relaciones lineales. Random Forest va a dividir 
 los datos en múltiples árboles, capturando todas estas relaciones no lineles. Además al observar la importancia 
@@ -683,11 +698,11 @@ aprendió que cada río tiene características únicas.
 Pero, es importante informar sobre los límites del modelo para generalizar. Ya que el análisis geográfico evidenció que hay un caso 
 en el que no es confiable: Las cuencas cordilleranas. Ya que el modelo sirve bastante en las cuencas con una altura menor a 1.000 metros, donde logra reducir el error 
 hasta un 50%. Pero en las cuencas sobre los 1.500 metros, la mejora cae bastante, llegando a casos negativos. Esto no es un fallo sino que es una falta de información, ya que en la cordillera, el 
-agua de los ríos viene del derretimiento de de la nieve acumulada y nuestra base no presentaba variables que midieran esto. 
+agua de los ríos viene del derretimiento de de la nieve acumulada y nuestra base no presentaba variables que midieran esto. Algo similar ocurre en los días de caudal bajo: ahí ningún modelo logró superar a la persistencia, porque el río cambia muy poco de un día a otro. Por lo tanto, el modelo aporta principalmente cuando el caudal está cambiando, como durante lluvias y crecidas, y no en períodos de estiaje.
 
 Por otro lado la validación temporal en el conjunto de prueba final agregó una complicación ya que en este periodo 
 coincidió con una megasequía en la zona central de Chile. Por loq ue tuvo que predecir en un rango de condiciones que el modelo no conocía, 
-Incluso así el modelo pudo mantener una mejora relativa de un 35.9% frente a la persistencia, 
+Incluso así el modelo pudo mantener una mejora relativa de un 35.1% frente a la persistencia, 
 pero sus errores absolutos aumentaron. Esto debido a que el modelo se quedó sin referencias temporales 
 para hacer sus comparaciones. Esto nos muestra que ningún modelo entrenado con datos históricos puede predecir con seguridad 
 un cambio climático extremo. Por lo que estos modelos deben ser actualizados y ser reentrenados constantemente.
@@ -749,4 +764,14 @@ Dirección General de Aguas. (2004). *Diagnóstico y clasificación de los curso
 
 ## Anexo técnico
 
-Agrega material complementario si corresponde.
+\underline{Construcción de la especificación base}
+
+Antes de ajustar los tres procedimientos, se construyó una especificación base mediante una secuencia de regresiones lineales en la que la información 
+se incorporó de manera progresiva, con el fin de identificar qué aportaba cada grupo de predictores. Se partió de un modelo que solo considera la tendencia 
+reciente del río (cambio_hoy) y su nivel actual ($\log Q_t$), con un mismo efecto para todas las cuencas.
+ Este modelo tuvo un desempeño prácticamente igual al de persistencia, lo que mostró que un comportamiento común para las 30 cuencas no era suficiente.
+
+Al permitir que cada cuenca tuviera su propia velocidad de descenso del caudal, y luego su propia respuesta a la precipitación,
+ el error bajó de forma consistente. En la validación de 2012 este modelo redujo el MAE en torno a un 11 % respecto de persistencia 
+ y superó a esta referencia en 26 de las 30 cuencas. Esto confirmó que la heterogeneidad entre cuencas es un componente central
+  del problema. Finalmente, se incorporaron la temperatura del día, la temperatura promedio de los últimos 7 días y el mes, con el fin de representar la estacionalidad y el deshielo. Aunque en la regresión lineal estas variables no mejoraron de forma consistente el desempeño, se mantuvieron en la especificación común, ya que los modelos más flexibles podrían aprovechar relaciones no lineales o interacciones con ellas. Toda esta construcción utilizó exclusivamente datos del período de desarrollo.
