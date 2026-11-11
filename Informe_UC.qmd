@@ -164,7 +164,7 @@ Observaciones prueba & 41.961 \\
 
 A continuación se construyó la variable respuesta $Q_{t+1}$ desplazando la serie para que cada fila $Q_t$ tenga su respectivo $Q_{t+1}$ verificando que no haya error en las asociaciones. Se conservaron únicamente los pares cuenca–fecha con valores observados tanto de $Q_t$ como de $Q_{t+1}$, por lo que se dispone de 183.003 observaciones.
 
-Adicionalmente, se construyeron variables predictoras a partir de la información disponible hasta el día de origen $t$: algunas asociadas al día anterior, como ($Q_{t-1}$, $P_{t-1}$), otras que dan cuenta de la precipitación acumulada en las últimas 3, 7 y 30 fechas y la temperatura media de las últimas 7 fechas.
+Adicionalmente, se construyeron variables predictoras a partir de la información disponible hasta el día de origen $t$: algunas asociadas al día anterior, como ($Q_{t-1}$, $P_{t-1}$), otras que dan cuenta de la precipitación acumulada en los últimos 3, 7 y 30 días y la temperatura media de los últimos 7 días.
 
 La disponibilidad de estos predictores redujo la muestra a 181.899 registros completos. Finalmente, se estableció una separación temporal entre el período de desarrollo, correspondiente a 2000–2012, y el período reservado para prueba final, correspondiente a 2013–2016. Las observaciones se asignaron considerando la fecha de la respuesta, de modo que la información del período de prueba no se utilizara para el desarrollo de los modelos. La muestra quedó conformada por 139.938 registros de desarrollo y 41.961 de prueba.
 
@@ -318,6 +318,52 @@ Para seleccionar la mejor configuración de cada procedimiento y posteriormente 
 La selección se realizó utilizando exclusivamente los resultados del período de desarrollo. Posteriormente, los modelos se evaluaron en el período de prueba final (2013–2016), sin modificar las configuraciones seleccionadas.
 
 ## Métodos
+
+\underline{Construcción de la especificación base}
+
+Antes de ajustar los tres procedimientos, se construyó una especificación base mediante una secuencia de regresiones lineales en la que la información 
+se incorporó de manera progresiva, con el fin de identificar qué aportaba cada grupo de predictores. Se partió de un modelo que solo considera la tendencia 
+reciente del río (cambio_hoy) y su nivel actual ($\log Q_t$), con un mismo efecto para todas las cuencas.
+ Este modelo tuvo un desempeño prácticamente igual al de persistencia, lo que mostró que un comportamiento común para las 30 cuencas no era suficiente.
+
+Al permitir que cada cuenca tuviera su propia velocidad de descenso del caudal, y luego su propia respuesta a la precipitación,
+ el error bajó de forma consistente. En la validación de 2012 este modelo redujo el MAE en torno a un 11 % respecto de persistencia 
+ y superó a esta referencia en 26 de las 30 cuencas. Esto confirmó que la heterogeneidad entre cuencas es un componente central
+  del problema. Finalmente, se incorporaron la temperatura del día, la temperatura promedio de los últimos 7 días y el mes, para 
+  capturar el efecto de la estacionalidad y del deshielo.
+
+La especificación resultante se utilizó como punto de partida común: M1 emplea exactamente estos predictores,
+ mientras que M2 y M3 utilizan la misma información, pero con mayor flexibilidad para representar relaciones no lineales 
+ e interacciones (Tabla \ref{tab:predictores}).
+
+ ```{=latex}
+\begin{table}[H]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{|p{2.6cm}|X|X|X|}
+\hline
+\textbf{Predictores} & \textbf{M1: Ridge} & \textbf{M2: GAM} & \textbf{M3: Random Forest} \\
+\hline
+$\texttt{cambio\_hoy}$, $\log Q_t$ & Lineal & Curva suave & Sin transformar \\
+\hline
+$P_t$, $P_{t-1}$, lluvia 3, 7 y 30 días & Lineal en $\log(1+x)$ & Curva suave de $\log(1+x)$ & Sin transformar \\
+\hline
+$T_t$, $\texttt{temp\_7d}$ & Lineal & Curva suave & Sin transformar \\
+\hline
+Mes & Categórica & Categórica & Categórica \\
+\hline
+Cuenca (código) & Intercepto propio & Intercepto propio & Categórica \\
+\hline
+Efectos propios por cuenca & Pendientes para $\log Q_t$, $P_t$, $P_{t-1}$, lluvia 3 días y $\texttt{temp\_7d}$ & Curvas para $\log Q_t$ y $P_t$ ($k=5$) & No se especifican; los árboles las aprenden \\
+\hline
+Configuración elegida & $\lambda = 0{,}001$ & Estructura C, $k=10$ & $\mathrm{mtry}=8$, $\mathrm{nodesize}=5$ \\
+\hline
+\end{tabularx}
+\caption{Predictores y su forma de inclusión en cada procedimiento}
+\label{tab:predictores}
+\end{table}
+
 \underline{Modelos aplicados}
 
 Para predecir el caudal del día siguiente se utilizaron tres procedimientos estadísticos: regresión penalizada (M1), modelos aditivos generalizados (M2) y Random Forest (M3). 
@@ -325,18 +371,24 @@ Para predecir el caudal del día siguiente se utilizaron tres procedimientos est
 \underline{M1: Regresión penalizada (Ridge y Lasso)}
 
 Ridge reduce la magnitud de los coeficientes sin eliminarlos, mientras que Lasso puede llevar algunos de ellos a cero. Una de sus grandes ventajas es que permite controlar la complejidad del modelo mientras captura la relación lineal entre los predictores y la variable respuesta.
+Se espera que M1 capture el comportamiento promedio del caudal y las diferencias entre cuencas, gracias a sus efectos específicos por río. Sin embargo, al suponer relaciones lineales, podría fallar en crecidas, donde la respuesta del caudal a la precipitación no es proporcional, y en cuencas con deshielo, donde la temperatura y la estación interactúan de forma más compleja.
 
 \underline{M2: Modelo aditivo generalizado (GAM)}
 
 A diferencia de la regresión penalizada, este modelo permite representar relaciones no lineales entre las variables explicativas y la respuesta mediante funciones suaves. Esto representa una fortaleza en el contexto hidrológico, pues el comportamiento del caudal frente a precipitaciones y temperatura no necesariamente debe ser lineal.
 
 Se probaron distintas versiones del GAM para considerar que los ríos no necesariamente responden de la misma manera ante las mismas condiciones. Por ejemplo, una misma cantidad de precipitación puede producir un aumento importante del caudal en una cuenca y uno menor en otra. Por este motivo, se evaluaron modelos que permiten que la relación entre la precipitación y el cambio del caudal sea diferente para cada cuenca, así como la relación entre el caudal actual y su variación al día siguiente.
+Se espera que el GAM mejore a M1 en eventos de lluvia intensa y en la recesión posterior a una crecida, donde las relaciones son no lineales. Su principal limitación es que los efectos se suman entre sí, por lo que no captura interacciones que no se especifiquen explícitamente, como la combinación de lluvia y temperatura en cuencas con nieve. Además, su costo computacional crece considerablemente al permitir curvas propias por cuenca.
 
 \underline{M3: Random Forest}
 
-Consiste en una combinación de múltiples árboles de decisión para generar las predicciones. Permite representar relaciones no lineales, pero tiene la ventaja de que además permite considerar interacciones a priori desconocidas entre las variables explicativas y la respuesta.
+Consiste en una combinación de múltiples árboles de decisión para generar las predicciones. Permite representar relaciones no lineales, pero tiene la ventaja de que además permite considerar interacciones a priori desconocidas entre las variables explicativas.
 
 La comparación de M1, M2 y M3 permitió evaluar si una mayor flexibilidad del modelo se traducía en una mejora de la capacidad predictiva.
+Se espera que el Random Forest capture interacciones entre predictores sin necesidad de especificarlas, por ejemplo, que la misma lluvia tenga efectos distintos según la temperatura o la época del año. Sin embargo, sus predicciones se construyen promediando situaciones observadas en el entrenamiento,
+ por lo que no puede extrapolar fuera de ese rango. Esto podría afectarlo ante caudales extremos nunca observados o ante condiciones persistentemente distintas, como una sequía prolongada. Además, es el modelo menos interpretable de los tres.
+
+
 
 \underline{Preprocesamiento de los datos}
 
@@ -348,11 +400,15 @@ $$
 
 Se aplicó esta transformación por la asimetría de la distribución del caudal y por las diferencias de magnitud entre cuencas. Para las variables de precipitación utilizadas en M1 y M2 se aplicó la transformación $\log(1+x)$ con el fin de reducir la asimetría y poder trabajar con observaciones cuya precipitación es igual a cero.
 
-Una vez obtenidas las predicciones del cambio logarítmico, estas se transformaron nuevamente a la escala original de caudal, expresada en $\frac{m^3}{s}$.
+Una vez obtenidas las predicciones del cambio logarítmico, estas se transformaron nuevamente a la escala original de caudal:
+
+$$\hat{Q}_{i,t+1} = Q_{i,t}\, e^{\hat{Y}_{i,t}},$$
+
+expresada en $\frac{m^3}{s}$.
 
 \underline{Hiperparámetros y presupuesto de búsqueda}
 
-Para cada modelo se definió una grilla de valores para sus hiperparámetros, los cuales se compararon utilizando el diseño de validación cruzada previamente descrito (Tabla \ref{tab:hiperparametros}).
+Para cada modelo se definió una grilla de valores para sus hiperparámetros, los cuales se compararon utilizando el diseño de validación temporal con origen creciente previamente descrito (Tabla \ref{tab:hiperparametros}).
 
 Para M1 se comparan 16 combinaciones de hiperparámetros, considerando coeficientes asociados a Ridge ($\alpha = 0$), Lasso ($\alpha = 1$), y ocho valores distintos de $\lambda$.
 
@@ -373,7 +429,7 @@ $\lambda \in \{0;\ 0{,}0001;\ 0{,}0003;\ 0{,}001;\ 0{,}003;\ 0{,}01;\ 0{,}03;\ 0
 \hline
 M2: GAM & Estructuras A, B y C con $k=5,10$; adicionalmente C con $k=15$ & 7 \\
 \hline
-M3: Random Forest & $\mathrm{mtry}=2,3,5$ con $\mathrm{nodesize}=5,25$; adicionalmente $\mathrm{mtry}=8$ y $\mathrm{nodesize}=5$ & 7 \\
+M3: Random Forest & $\mathrm{mtry}=2,3,5$ con $\mathrm{nodesize}=5,25$; como el mejor modelo fue con $\mathrm{nodesize}=5$ adicionalmente se probó $\mathrm{mtry}=8$ y $\mathrm{nodesize}=5$ & 7 \\
 \hline
 \textbf{Total} & & \textbf{30} \\
 \hline
@@ -387,7 +443,8 @@ Para M2 se evalúan tres estructuras distintas:
 - B: agrega una función suave de la precipitación actual específica por cuenca.
 - C: incorpora también una función suave específica por cuenca para el logaritmo del caudal actual.
 
-Se evalúan $k=5$ y $k=10$ como valores que regulan la flexibilidad máxima de las funciones suaves, obteniendo seis configuraciones en total.
+Se evalúan $k=5$ y $k=10$ como valores que regulan la flexibilidad máxima de las funciones suaves, obteniendo seis configuraciones. Además, con k = 10, 
+varias de las curvas comunes del GAM utilizaban prácticamente toda la flexibilidad permitida, lo que indicaba que el límite fijado podía estar restringiendo la forma de esas relaciones. Por ello, se evaluó una configuración adicional con k = 15. Esta no mejoró el desempeño en desarrollo, por lo que se mantuvo k = 10.”
 
 A partir de los diagnósticos realizados durante el desarrollo, se amplió la búsqueda incorporando una séptima configuración correspondiente a la estructura C con $k=15$. Los parámetros de suavizado se estimaron dentro de cada ajuste mediante REML.
 
@@ -404,21 +461,27 @@ En todos los ajustes se utilizaron 200 árboles y una submuestra de entrenamient
 En total, el presupuesto de búsqueda comprendió 16 configuraciones de M1, 7 de M2 y 7 de M3. Las configuraciones se compararon mediante su desempeño predictivo en las siete ventanas de validación, siguiendo los criterios de mejora relativa del MAE y RMSE definidos en el apartado de Diseño de evaluación.
 
 ## Resultados
-
-Para comparar los modelos, lo primero que se hizo fue analizar cada desempeño en el conjunto de desarrollo es decir, desde 2006 hasta 2012, donde el modelo aprende del pasado para predecir el siguiente año. 
-La tabla 1 va a resumir cada rendimiento de los 3 modelos que se realizaron y las dos referencias osea persistencia y Estacional, todos ordenados por su mejora mediana en el MAE. Y como se puede observar, Random Forest fue el que mejor desempeño obtuvo, reduciendo el error en un 36.1% en comparación con la persistencia. 
-El modelo GAM logró una mejora del 27%, mientras que la regresión penalizada solo tuvo una mejora del 14.1%. La referencia estacional nos indicó un error negativo, reafirmando que teniendo conocimiento sobre cuánta agua trae el río hoy es la información más importante para predecir el de mañana
-
-Ya habiendo seleccionado el modelo de Random Forest, se evaluó en el conjunto de testeo final que contiene desde el año 2013 hasta el 2016, periodo el cúal nuestro modelo nunca vio y que además coincidió con una megasequía en la zona central de nuestro país. 
-La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.5% en MAE y un 27.7% en RMSE frente a la persistencia. GAM por su parte, obtuvo una mejora del 25.7%, mientras que la regresión penalizada se quedo con un 14.1% de mejora. Estos resultados son muy relevantes para demostrar que nuestro modelo tiene una capacidad predictiva que se mantiene en el tiempo, incluso cuando las condiciones 
-climáticas cambian drásticamente hacia un clima más seco.
+Para comparar los modelos, lo primero que se hizo fue analizar cada desempeño en el conjunto de desarrollo. 
+Cuyas particiones ya fueron establecidas y detalladas en la sección de diseño de evaluación. 
+La tabla 1 va a resumir cada rendimiento de los 3 modelos que se realizaron y las dos referencias, 
+o sea persistencia y estacional, todos ordenados por su mejora mediana en el MAE. 
+Dentro de esta tabla la columna "Mejora MAE" indica el porcentaje en que el modelo reduce su error absoluto respecto a la persistencia, 
+mientras que la columna "Peor año (MAE)" mostrará el desempeño del modelo en el año donde logró la menor mejora y "Ríos donde gana" va a indicar en cuántas de nuestras combinaciones de río y año el modelo superó la persistencia. 
+Y como se puede observar, Random Forest fue el que mejor desempeño obtuvo, reduciendo el error en un 36.6% en comparación con la persistencia. El modelo GAM logró una mejora del 27%, 
+mientras que la regresión penalizada solo tuvo una mejora del 14.1%. La referencia estacional nos indicó un error negativo, reafirmando que teniendo conocimiento sobre cuánta agua trae el río hoy es la información más importante para predecir el de mañana.
+Ya habiendo seleccionado el modelo de Random Forest, se evaluó en el conjunto de testeo final que contiene desde el año 2013 hasta el 2016, 
+periodo el cual nuestro modelo nunca vio y que además coincidió con una megasequía en la zona central de nuestro país. 
+La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.9% en MAE y un 28.2% en RMSE frente a la persistencia. 
+En esta misma tabla también se puede observar la columna "Ríos gana" que va a contar en cuántas de las 30 cuencas el modelo superó la persistencia y los "Días evaluados" que sería la cantidad de días con datos válidos que se utilizaron en la comparación. GAM por su parte, 
+obtuvo una mejora del 25.6%, mientras que la regresión penalizada se quedó con un 14.1% de mejora. Estos resultados son muy relevantes para demostrar que nuestro modelo tiene una capacidad predictiva que se mantiene en el tiempo, 
+incluso cuando las condiciones climáticas cambian drásticamente hacia un clima más seco.
 
 ```{=latex}
 \begin{table}[H]
 \centering
 \fontsize{7}{8.5}\selectfont
 \renewcommand{\arraystretch}{1.2}
-\setlength{\tabcolsep}{2pt} % Reduce el espacio entre columnas al mínimo
+\setlength{\tabcolsep}{2pt}
 
 % TABLA IZQUIERDA
 \begin{minipage}[t]{0.48\textwidth}
@@ -428,9 +491,9 @@ climáticas cambian drásticamente hacia un clima más seco.
 
 \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
 \hline
-\textbf{Modelo} & \textbf{MAE} & \textbf{RMSE} & \textbf{Peor año} & \textbf{Ríos gana} \\
+\textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Peor año (MAE)} & \textbf{Ríos donde gana} \\
 \hline
-\textbf{M3 Random Forest} & \textbf{36.1\%} & \textbf{30.9\%} & 28.5\% & 197 \\
+\textbf{M3 Random Forest} & \textbf{36.6\%} & \textbf{31.0\%} & 29.7\% & 197 \\
 \hline
 M2 GAM & 27.0\% & 26.1\% & 19.9\% & 180 \\
 \hline
@@ -451,11 +514,11 @@ Estacional & -276.3\% & -123.6\% & -439.6\% & 0 \\
 
 \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
 \hline
-\textbf{Modelo} & \textbf{MAE} & \textbf{RMSE} & \textbf{Ríos gana} & \textbf{Días eval.} \\
+\textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Ríos gana} & \textbf{Días evaluados} \\
 \hline
-\textbf{M3 Random Forest} & \textbf{35.5\%} & \textbf{27.7\%} & 28 & 41.961 \\
+\textbf{M3 Random Forest} & \textbf{35.9\%} & \textbf{28.2\%} & 29 & 41.961 \\
 \hline
-M2 GAM & 25.7\% & 21.3\% & 27 & 41.961 \\
+M2 GAM & 25.6\% & 21.3\% & 27 & 41.961 \\
 \hline
 M1 Ridge/Lasso & 14.1\% & 11.1\% & 26 & 41.961 \\
 \hline
@@ -464,6 +527,87 @@ Persistencia & 0.0\% & 0.0\% & 0 & 41.961 \\
 \end{tabularx}
 \end{minipage}
 \end{table}
+
+Con la finalidad de comprender en que se basa Random Forest para realizar sus predicciones, 
+la tabla 3 nos indica la importancia de variables. 
+Para calcular esta relevancia, el modelo usa una técnica de permutación en la cual se desordenan aleatoriamente los valores de una variable, 
+para así eliminar su relación con el caudal y medir cuánto aumenta el error. 
+La columna %IncMSE mide que tanto aumenta el error al eliminar esa variable. Y 
+como se puede observar, el modelo se apoya mucho en la cuenca, seguida de por el nivel del río y la memoria a corto plazo. 
+Esto nos demuestra que el modelo captura la heterogeneidad de los atributos físicos de cada río.
+
+\begin{table}[H]
+\centering
+\fontsize{8}{10}\selectfont
+\renewcommand{\arraystretch}{1.1}
+\setlength{\tabcolsep}{6pt} 
+
+\begin{tabular}{|l|c|}
+\hline
+\textbf{Variable} & \textbf{\%IncMSE (Aumento del error al permutar)} \\
+\hline
+\textbf{cuenca} & \textbf{47.04} \\
+\hline
+log\_Q & 29.37 \\
+\hline
+cambio\_hoy & 28.51 \\
+\hline
+mes & 23.12 \\
+\hline
+temp\_7d & 19.95 \\
+\hline
+P & 18.35 \\
+\hline
+P\_ayer & 13.89 \\
+\hline
+lluvia\_30d & 10.24 \\
+\hline
+Temp & 9.30 \\
+\hline
+lluvia\_3d & 8.55 \\
+\hline
+lluvia\_7d & 7.53 \\
+\hline
+\end{tabular}
+\caption{Importancia de las variables en el modelo Random Forest.}
+\label{tab:importancia}
+\end{table}
+
+
+
+Para comprender el rendimiento del modelo a nivel geográfico, la figura \ref{fig_altura} grafica la mejora de cada cuenca en la prueba final en función de su altura media. Los puntos azules representan los ríos sin embalses grandes y los naranjos, con embalses. El gráfico muestra un claro patrón de que el modelo rinde excelente en las cuencas menores a 1.000 metros, donde alcanza mejoras de hasta un 50%. 
+Pero por otro lado, a medida que va aumentando la altura, la mejora disminuye bastante. Ya que las cuencas sobre los 1.500 metros muestran mejoras cercanas a cero. 
+Además para cuantificar la incertidumbre del 35.9% de mejora que se obtuvo en la prueba final, aplicamos un remuestreo con Bootstrap con bloques móviles cada 30 días. 
+La figura \ref{fig-altura-bootstrap} muestra el histograma de 1000 réplicas de este proceso. 
+Y la línea vertical negra va a representar nuestro valor observado del 35.9%. 
+Asimismo es sumamente importante notar que el cero esta mucho más a la izquierda, 
+confirmando que la ventaja del Random Forest es robusta y no por azar.
+
+\begin{figure}[H]
+\centering
+% GRÁFICO IZQUIERDO: Altura
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{resultados/fig_diagnostico_altura.png}
+\caption{Mejora por cuenca según altura y embalses.}
+\label{fig-altura}
+\end{minipage}% <-- El % es vital para que no se pongan uno abajo del otro
+\hfill % <-- Empuja el gráfico derecho hacia el margen
+% GRÁFICO DERECHO: Bootstrap
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{resultados/fig_bootstrap.png}
+\caption{Distribución Bootstrap de la mejora en MAE.}
+\label{fig-bootstrap}
+\end{minipage}
+\label{fig-altura-bootstrap}
+\end{figure}
+
+Finalmente, al analizar las sensibilidades se confirmaron nuestras desiciones del diseño. 
+Al tratar de predecir el caudal directamente en la escala original, la mejora disminuyó a un 19.6%, esto justifica claramente el uso
+de la transformación logarítmica. Por otro lado, al reemplazar la variable cuenca por atributos como el área, altura y pendiente, el modelo pudo mantener 
+una mejora del 36.3%. Lo cúal demuestra que Random Forest no va a depender de memorizar el nombre o el código del río, sino que puede generalizar correctamente 
+y predecir con una gran precisión las cuencas nuevas que tienen características similares.
 
 ## Discusión
 
