@@ -624,17 +624,18 @@ A través de análisis de sensibilidad se evaluaron dos decisiones de representa
 
 \begin{table}[H]
 \centering
+\small
 \caption{Sensibilidades de representación de los datos para M3 (desarrollo, promedio de las 7 ventanas 2006--2012). Mejora relativa frente a persistencia.}
 \label{tab:sens-s1s3}
-\begin{tabular}{lcccc}
+\begin{tabularx}{\textwidth}{Xcccc}
 \toprule
-Variante & Mejora MAE & Mejora RMSE & Peor año (MAE) & Diferencia en MAE \\
+Variante & Mejora MAE & Mejora RMSE & Peor año (MAE) & Dif. MAE \\
 \midrule
 M3 ganador (cambio log, código de cuenca) & 0,366 & 0,310 & 0,297 & --- \\
 S1: respuesta en m$^3$/s                  & 0,243 & 0,225 & 0,144 & $-0{,}123$ \\
 S3: atributos físicos en vez de cuenca    & 0,354 & 0,295 & 0,300 & $-0{,}012$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 \textbf{S1: escala de la respuesta.} Cuando no realizamos un cambio logarítmico respecto al caudal de hoy, sino que modelamos el caudal de mañana directamente en m$^3$/s, la mejora de M3 en comparación con persistencia baja en MAE de 0,366 a 0,243, y la del peor año, de 0,297 a 0,144. Cuando se aplica la escala logarítmica, se ponen a un mismo nivel cuencas con caudales muy distintos y se fija la persistencia como cambio cero (punto de partida natural). Esta transformación es necesaria, pues de lo contrario el ajuste queda dominado por los ríos más grandes y el desempeño es peor y más inestable entre años.
@@ -643,19 +644,24 @@ S3: atributos físicos en vez de cuenca    & 0,354 & 0,295 & 0,300 & $-0{,}012$ 
 
 \begin{table}[H]
 \centering
+\small
 \caption{Sensibilidad de validación: configuración elegida en cada familia al validar con 7 ventanas (2006--2012) o con 3 ventanas (2010--2012). Mejora en MAE frente a persistencia.}
 \label{tab:sens-s2}
-\begin{tabular}{lcccc}
+\begin{tabularx}{\textwidth}{Xcccc}
 \toprule
  & \multicolumn{2}{c}{7 ventanas} & \multicolumn{2}{c}{3 ventanas} \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
 Familia & Configuración & Mejora MAE & Configuración & Mejora MAE \\
 \midrule
 M1 ridge/lasso   & ridge, $\lambda=0{,}001$ & 0,136 & ridge, $\lambda=0{,}03$ & 0,133 \\
-M2 GAM           & C\_k10                    & 0,270 & C\_k10                   & 0,226 \\
-M3 random forest & mtry 8, nodo 5            & \textbf{0,366} & mtry 8, nodo 5   & \textbf{0,340} \\
+M2 GAM           & C\_k10                   & 0,270 & C\_k10                  & 0,226 \\
+M3 random forest & mtry 8, nodo 5           & \textbf{0,366} & mtry 8, nodo 5 & \textbf{0,340} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
+
+\vspace{2pt}
+{\footnotesize En negrita, la familia elegida con cada esquema: M3 en ambos casos.}
+\end{table}
 
 \vspace{2pt}
 {\footnotesize En negrita, la familia elegida con cada esquema: M3 en ambos casos.}
