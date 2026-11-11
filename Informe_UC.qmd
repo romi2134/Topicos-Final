@@ -63,7 +63,7 @@ link-citations: true
 
 ## Resumen ejecutivo
 
-Escribe aquí el resumen ejecutivo del informe (máximo 250 palabras).Predecir el caudal de un río para el día siguiente puede ayudar a planificar el uso del agua, pero la alternativa más simple, suponer que mañana el río llevará lo mismo que hoy (persistencia), ya es difícil de superar. En este trabajo nos preguntamos cuánto mejora un modelo estadístico frente a esa referencia, usando datos diarios de 30 cuencas de CAMELS-CL ubicadas entre los 33° y 40° de latitud sur, con información de caudal, precipitación y temperatura entre 2000 y 2016.
+Predecir el caudal de un río para el día siguiente puede ayudar a planificar el uso del agua, pero la alternativa más simple, suponer que mañana el río llevará lo mismo que hoy (persistencia), ya es difícil de superar. En este trabajo nos preguntamos cuánto mejora un modelo estadístico frente a esa referencia, usando datos diarios de 30 cuencas de CAMELS-CL ubicadas entre los 33° y 40° de latitud sur, con información de caudal, precipitación y temperatura entre 2000 y 2016.
 
 Comparamos una regresión penalizada (Ridge), un modelo aditivo generalizado (GAM) y un Random Forest. Los modelos se eligieron con siete ventanas de validación entre 2006 y 2012, y luego se evaluaron una sola vez en 2013–2016. El Random Forest fue el mejor en ambos períodos: en la prueba final redujo el error absoluto medio en un 35,1 % respecto de la persistencia (intervalo bootstrap al 95 %: 30,3 % a 38,5 %) y le ganó en 29 de las 30 cuencas, a pesar de que ese período coincidió con la megasequía. El GAM mejoró un 25,6 % y la regresión penalizada un 14,1 %.
 
@@ -721,7 +721,7 @@ Finalmente, como se mencionó. Al estar constantemente cambiando el clima, este 
 
 \underline{Código y ejecución}
 
-Todo el análisis se encuentra en el repositorio público \url{https://github.com/romi2134/Topicos-Final} (versión utilizada: commit [HASH FINAL]). 
+Todo el análisis se encuentra en el repositorio público \url{https://github.com/romi2134/Topicos-Final}. 
 Los datos de entrada corresponden a los archivos del paquete caso01_camels_cl.zip entregado por el curso , descomprimidos en la carpeta datos/ sin modificaciones.
 
 El análisis se ejecuta desde la carpeta del repositorio con el comando Rscript --vanilla Codigo_principal.R, 
