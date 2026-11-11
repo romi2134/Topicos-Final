@@ -581,23 +581,22 @@ temp\_7d & 8.29 \\
 
 
 
-Para comprender el rendimiento del modelo a nivel geográfico, la figura \ref{fig-altura} grafica la mejora de cada cuenca en la prueba final en función de su altura media. Los puntos azules representan los ríos sin embalses grandes y los naranjos, con embalses. El gráfico muestra un claro patrón de que el modelo rinde excelente en las cuencas menores a 1.000 metros, donde alcanza mejoras de hasta un 50%. 
-Pero por otro lado, a medida que va aumentando la altura, la mejora disminuye bastante. Ya que las cuencas sobre los 1.500 metros muestran mejoras cercanas a cero. 
-Además para cuantificar la incertidumbre del 35.1% de mejora que se obtuvo en la prueba final, aplicamos un remuestreo con Bootstrap con bloques móviles cada 30 días. 
-La figura \ref{fig-altura-bootstrap} muestra el histograma de 1000 réplicas de este proceso. 
-Y la línea vertical negra va a representar nuestro valor observado del 35.1%. 
-Asimismo es sumamente importante notar que el cero esta mucho más a la izquierda, 
-confirmando que la ventaja del Random Forest es robusta.
+Para ver cómo cambia el rendimiento del modelo entre cuencas, la Figura \ref{fig-altura} muestra la mejora 
+en MAE de cada cuenca en la prueba final según su altura media. Los puntos azules son cuencas sin embalses grandes 
+ los naranjos, con embalse. Se observa que el modelo funciona mejor en las cuencas bajas (bajo 1.000 m), donde varias 
+ superan el 40 % de mejora, y que a medida que aumenta la altura la mejora va disminuyendo, llegando a valores cercanos
+  a cero en las cuencas más altas. Algo parecido pasa con las cuencas con embalse, donde la mejora también es menor.
+ Esto tiene sentido, ya que en esas cuencas el caudal depende del deshielo o de la regulación, cosas que el modelo no 
+ alcanza a captar con las variables que usamos.
 
-Para cuantificar la incertidumbre de la mejora observada en la prueba (35,1 %), 
-se aplicó un bootstrap por bloques móviles de 30 días consecutivos con 1000 réplicas. Cada fecha
- remuestreada conserva las 30 cuencas de ese día, lo que respeta tanto la dependencia temporal como 
- la simultaneidad entre cuencas (una misma tormenta afecta a varios ríos). El intervalo al 95 % para
-  la mejora mediana en MAE es [30,3 %; 38,5 %], y para el RMSE es [22,4 %; 32,3 %]; ninguna de las 1000 
-  réplicas mostró una mejora menor o igual a cero (Figura \ref{fig-altura-bootstrap}). Las predicciones 
-  se mantuvieron fijas y el modelo no se reajustó, por lo que el intervalo describe la incertidumbre debida
-   a los días de prueba, condicional a los ajustes realizados, y no incluye la incertidumbre de selección 
-   ni de entrenamiento.
+Para medir la incertidumbre del 35,1 % de mejora en la prueba, usamos un bootstrap por bloques de 30 días con 
+1000 réplicas. Remuestreamos bloques de días consecutivos manteniendo juntas las 30 cuencas de cada fecha, 
+porque un día se parece al siguiente y una misma lluvia afecta a varios ríos a la vez. La Figura
+ \ref{fig-altura-bootstrap} muestra el resultado: el intervalo al 95 % para la mejora en MAE va de 30,3 % a 38,5 % 
+ (y de 22,4 % a 32,3 % para el RMSE), y ninguna réplica quedó en cero o por debajo. 
+ Hay que tener en cuenta que el modelo no se volvió a ajustar en cada réplica, así que el
+  intervalo solo refleja la variación por los días de prueba y no la incertidumbre de haber elegido y
+   entrenado el modelo.
 
 \begin{figure}[H]
 \centering
@@ -619,20 +618,119 @@ se aplicó un bootstrap por bloques móviles de 30 días consecutivos con 1000 r
 \label{fig-altura-bootstrap}
 \end{figure}
 
-Finalmente, al analizar las sensibilidades se confirmaron nuestras desiciones del diseño. 
-Al tratar de predecir el caudal directamente en la escala original, la mejora disminuyó a un 19.6%, esto justifica claramente el uso
-de la transformación logarítmica. Por otro lado, al reemplazar la variable cuenca por atributos como el área, altura y pendiente, el modelo pudo mantener 
-una mejora del 36.3%. Lo cúal demuestra que Random Forest no va a depender de memorizar el nombre o el código del río.
- Por otro lado, al reemplazar el identificador de cuenca por atributos físicos estables
-  (área, altura media, pendiente, cobertura de bosque, fracción nival, presencia de embalse y latitud), la mejora se mantuvo prácticamente igual
-   (36,3 % frente a 36,6 %). Esto indica que la información que aporta el código de cuenca puede representarse con características físicas, sin depender de una etiqueta arbitraria. Sin embargo, esta sensibilidad se evaluó en días futuros de las mismas 30 cuencas, por lo que no constituye una validación en cuencas sin observaciones.
+\subsection*{Análisis de sensibilidad}
+
+A través de análisis de sensibilidad se evaluaron dos decisiones de representación de los datos y una de validación, en todas ellas con los datos de desarrollo (Tablas~\ref{tab:sens-s1s3} y~\ref{tab:sens-s2}).
+
+\begin{table}[H]
+\centering
+\caption{Sensibilidades de representación de los datos para M3 (desarrollo, promedio de las 7 ventanas 2006--2012). Mejora relativa frente a persistencia.}
+\label{tab:sens-s1s3}
+\begin{tabular}{lcccc}
+\toprule
+Variante & Mejora MAE & Mejora RMSE & Peor año (MAE) & Diferencia en MAE \\
+\midrule
+M3 ganador (cambio log, código de cuenca) & 0,366 & 0,310 & 0,297 & --- \\
+S1: respuesta en m$^3$/s                  & 0,243 & 0,225 & 0,144 & $-0{,}123$ \\
+S3: atributos físicos en vez de cuenca    & 0,354 & 0,295 & 0,300 & $-0{,}012$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{S1: escala de la respuesta.} Cuando no realizamos un cambio logarítmico respecto al caudal de hoy, sino que modelamos el caudal de mañana directamente en m$^3$/s, la mejora de M3 en comparación con persistencia baja en MAE de 0,366 a 0,243, y la del peor año, de 0,297 a 0,144. Cuando se aplica la escala logarítmica, se ponen a un mismo nivel cuencas con caudales muy distintos y se fija la persistencia como cambio cero (punto de partida natural). Esta transformación es necesaria, pues de lo contrario el ajuste queda dominado por los ríos más grandes y el desempeño es peor y más inestable entre años.
+
+\textbf{S3: identificación de la cuenca.} Cuando reemplazamos el código de cuenca por atributos físicos estables (área, elevación media, pendiente, fracción de bosque y de nieve, presencia de embalse y latitud), la mejora en MAE baja levemente, de 0,366 a 0,354. Esto indica que el modelo no depende de memorizar cada cuenca, pues gran parte de lo que aprende está explicado por sus características físicas.
+
+\begin{table}[H]
+\centering
+\caption{Sensibilidad de validación: configuración elegida en cada familia al validar con 7 ventanas (2006--2012) o con 3 ventanas (2010--2012). Mejora en MAE frente a persistencia.}
+\label{tab:sens-s2}
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{7 ventanas} & \multicolumn{2}{c}{3 ventanas} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Familia & Configuración & Mejora MAE & Configuración & Mejora MAE \\
+\midrule
+M1 ridge/lasso   & ridge, $\lambda=0{,}001$ & 0,136 & ridge, $\lambda=0{,}03$ & 0,133 \\
+M2 GAM           & C\_k10                    & 0,270 & C\_k10                   & 0,226 \\
+M3 random forest & mtry 8, nodo 5            & \textbf{0,366} & mtry 8, nodo 5   & \textbf{0,340} \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+{\footnotesize En negrita, la familia elegida con cada esquema: M3 en ambos casos.}
+\end{table}
+
+\textbf{S2: período de validación.} Al elegir los modelos con 3 ventanas (2010--2012) en lugar de 7 (2006--2012), la elección es estable: M3 sigue siendo la familia elegida, con la misma configuración, y M2 también mantiene la suya. Por lo tanto, la recomendación no depende de los años usados para validar.
+
 
 ## Discusión
-Interpreta los hallazgos y comenta sus limitaciones.
+
+Para responder a nuestra pregunta de investigación, los resultados obtenidos demuestran que sí es posible mejorar la predicción del caudal 
+del día siguiente contra la persistencia. Random Forest redujo el error en un 35.9% en el período de prueba final, superando 
+por bastante a M1 y M2. Esto se puede explicar debido a la relación entre las variables asociadas al clima y el caudal no es lineal, 
+sino que está llena de umbrales e interacciones complejas. Mientras que la regresión penalizada asume relaciones lineales. Random Forest va a dividir 
+los datos en múltiples árboles, capturando todas estas relaciones no lineles. Además al observar la importancia 
+de las variables podemos ver que el modelo se va a apoyar mucho en la identidad de la cuenca y en el nivel actual del río, confirmando que el modelo 
+aprendió que cada río tiene características únicas.
+
+Pero, es importante informar sobre los límites del modelo para generalizar. Ya que el análisis geográfico evidenció que hay un caso 
+en el que no es confiable: Las cuencas cordilleranas. Ya que el modelo sirve bastante en las cuencas con una altura menor a 1.000 metros, donde logra reducir el error 
+hasta un 50%. Pero en las cuencas sobre los 1.500 metros, la mejora cae bastante, llegando a casos negativos. Esto no es un fallo sino que es una falta de información, ya que en la cordillera, el 
+agua de los ríos viene del derretimiento de de la nieve acumulada y nuestra base no presentaba variables que midieran esto. 
+
+Por otro lado la validación temporal en el conjunto de prueba final agregó una complicación ya que en este periodo 
+coincidió con una megasequía en la zona central de Chile. Por loq ue tuvo que predecir en un rango de condiciones que el modelo no conocía, 
+Incluso así el modelo pudo mantener una mejora relativa de un 35.9% frente a la persistencia, 
+pero sus errores absolutos aumentaron. Esto debido a que el modelo se quedó sin referencias temporales 
+para hacer sus comparaciones. Esto nos muestra que ningún modelo entrenado con datos históricos puede predecir con seguridad 
+un cambio climático extremo. Por lo que estos modelos deben ser actualizados y ser reentrenados constantemente.
+
+Finalmente, para definir la utibilidad real y las condiciones del uso de este modelo. Las sensibilidades validaron 
+nuestras decisiones metodológicas. Ya que el utilizar la escala logarítmica resultó ser muy relevante 
+para evitar que los ríos con un gran caudal afectaran el aprendizaje del algoritmo, asegurando un equilibrio para todas las cuencas. 
+Además, cuando se comprobó que el modelo mantiene su alta capacidad para predecir usando solamente los atributos físicos 
+como el área y la altura en vez de usar el nombre del río, confirmamos que el modelo captura patrones en las características de los ríos. 
+Esto ayuda a que podamos usarlo en cuencas nuevas, siempre que tengan características similares. Con esto 
+podemos confirmar que Random Forest es un modelo muy recomendable para predecir crecidas en ríos de valles y zonas lluviosas. 
+Pero, no debe usarse para los ríos de zonas cordilleranas, ya que en estas zonas el flujo del agua depende del derretimiento de la nieve. 
+Finalmente, como se mencionó. Al estar constantemente cambiando el clima, este modelo debe ser actualizado frecuentemente para mantener su uso en el futuro.
 
 ## Reproducibilidad y contribuciones
 
-Indica el código utilizado, los datos y las contribuciones del equipo.
+\underline{Código y ejecución}
+
+Todo el análisis se encuentra en el repositorio público \url{https://github.com/romi2134/Topicos-Final} (versión utilizada: commit [HASH FINAL]). 
+Los datos de entrada corresponden a los archivos del paquete caso01_camels_cl.zip entregado por el curso , descomprimidos en la carpeta datos/ sin modificaciones.
+
+El análisis se ejecuta desde la carpeta del repositorio con el comando Rscript --vanilla Codigo_principal.R, 
+que realiza la preparación de los datos, las particiones, el ajuste de los modelos y, 
+al final, ejecuta bloques_11_16.R, donde se hacen la prueba final, el bootstrap, el diagnóstico y las sensibilidades. 
+Las tablas y figuras quedan guardadas en la carpeta resultados/. 
+Luego, el informe se genera con quarto render Informe_UC.qmd. Se fijaron semillas en todos los pasos aleatorios
+ (set.seed(3407) para los modelos y set.seed(2026) para el bootstrap).
+
+El análisis se corrió en R 4.5.3 sobre macOS (procesador Apple, arquitectura arm64), 
+usando los paquetes glmnet 4.1-10, Matrix 1.7-4, mgcv 1.9-4 y randomForest 4.7-1.2.
+ El Random Forest se ajustó en paralelo con 2 núcleos. La ejecución completa tarda aproximadamente [90] minutos,
+  de los cuales cerca de 40 corresponden a la búsqueda de configuraciones del Random Forest. 
+  
+\underline{Contribuciones}
+
+Si bien cada integrante se enfocó en ciertas partes del trabajo, todos revisamos el código, los resultados y el informe completo.
+
+- Javier Encina: implementación de M3 (Random Forest), análisis de resultados y discusión.
+- Camila Moreno: limpieza de los datos, implementación de M1 (Ridge/Lasso) y M2 (GAM) y análisis de resultados.
+- Romina Navarro: redacción del informe, presentación y organización del repositorio.
+- Javiera Sotolincoñir: limpieza y construcción de la base de datos y análisis de resultados.
+
+
+\underline{Declaración de uso de IA}
+
+Se utilizó ChatGPT entre el 4/11/2026 y el 11/11/2026 como apoyo para programación y depuración del código, revisión de redacción y tablas.  
+principalmente en limpieza de datos, implementación de métodos, resumen de resultados. Todo el código fue ejecutado y sus resultados verificados por el equipo,
+ y las cifras del informe se contrastaron con las salidas generadas en resultados/.
+
 
 ## Referencias
 Washington State Department of Ecology. (s. f.). *What is a watershed and why does it matter?*, <https://ecology.wa.gov/ecologys-work-near-you/river-basins-groundwater/what-is-a-watershed-and-why-does-it-matter>
