@@ -405,7 +405,65 @@ En total, el presupuesto de búsqueda comprendió 16 configuraciones de M1, 7 de
 
 ## Resultados
 
-Presenta los resultados, tablas y gráficos.
+Para comparar los modelos, lo primero que se hizo fue analizar cada desempeño en el conjunto de desarrollo es decir, desde 2006 hasta 2012, donde el modelo aprende del pasado para predecir el siguiente año. 
+La tabla 1 va a resumir cada rendimiento de los 3 modelos que se realizaron y las dos referencias osea persistencia y Estacional, todos ordenados por su mejora mediana en el MAE. Y como se puede observar, Random Forest fue el que mejor desempeño obtuvo, reduciendo el error en un 36.1% en comparación con la persistencia. 
+El modelo GAM logró una mejora del 27%, mientras que la regresión penalizada solo tuvo una mejora del 14.1%. La referencia estacional nos indicó un error negativo, reafirmando que teniendo conocimiento sobre cuánta agua trae el río hoy es la información más importante para predecir el de mañana
+
+Ya habiendo seleccionado el modelo de Random Forest, se evaluó en el conjunto de testeo final que contiene desde el año 2013 hasta el 2016, periodo el cúal nuestro modelo nunca vio y que además coincidió con una megasequía en la zona central de nuestro país. 
+La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.5% en MAE y un 27.7% en RMSE frente a la persistencia. GAM por su parte, obtuvo una mejora del 25.7%, mientras que la regresión penalizada se quedo con un 14.1% de mejora. Estos resultados son muy relevantes para demostrar que nuestro modelo tiene una capacidad predictiva que se mantiene en el tiempo, incluso cuando las condiciones 
+climáticas cambian drásticamente hacia un clima más seco.
+
+```{=latex}
+\begin{table}[H]
+\centering
+\fontsize{7}{8.5}\selectfont
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{2pt} % Reduce el espacio entre columnas al mínimo
+
+% TABLA IZQUIERDA
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\textbf{Tabla 1. Desarrollo (2006-2012)}
+\vspace{0.2cm}
+
+\begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
+\hline
+\textbf{Modelo} & \textbf{MAE} & \textbf{RMSE} & \textbf{Peor año} & \textbf{Ríos gana} \\
+\hline
+\textbf{M3 Random Forest} & \textbf{36.1\%} & \textbf{30.9\%} & 28.5\% & 197 \\
+\hline
+M2 GAM & 27.0\% & 26.1\% & 19.9\% & 180 \\
+\hline
+M1 Ridge/Lasso & 14.1\% & 12.4\% & 8.4\% & 177 \\
+\hline
+Persistencia & 0.0\% & 0.0\% & 0.0\% & 0 \\
+\hline
+Estacional & -276.3\% & -123.6\% & -439.6\% & 0 \\
+\hline
+\end{tabularx}
+\end{minipage}% <-- Este % es OBLIGATORIO para que no se pongan una abajo de la otra
+\hfill % <-- Empuja la tabla derecha hacia el margen
+% TABLA DERECHA
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\textbf{Tabla 2. Prueba final (2013-2016)}
+\vspace{0.2cm}
+
+\begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
+\hline
+\textbf{Modelo} & \textbf{MAE} & \textbf{RMSE} & \textbf{Ríos gana} & \textbf{Días eval.} \\
+\hline
+\textbf{M3 Random Forest} & \textbf{35.5\%} & \textbf{27.7\%} & 28 & 41.961 \\
+\hline
+M2 GAM & 25.7\% & 21.3\% & 27 & 41.961 \\
+\hline
+M1 Ridge/Lasso & 14.1\% & 11.1\% & 26 & 41.961 \\
+\hline
+Persistencia & 0.0\% & 0.0\% & 0 & 41.961 \\
+\hline
+\end{tabularx}
+\end{minipage}
+\end{table}
 
 ## Discusión
 

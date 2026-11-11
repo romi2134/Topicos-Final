@@ -963,7 +963,7 @@ library(parallel)
 n_cores <- min(detectCores() - 1, 2)
 
 cat("\n>>> Iniciando Random Forest con", n_cores, "núcleos en paralelo...\n")
-cat(">>> Tiempo estimado: ~10 min en total (6 configuraciones x 7 ventanas).\n")
+cat(">>> Tiempo estimado: ~25 min en total (6 configuraciones x 7 ventanas).\n")
 cat(">>> se vera el progreso de cada ventana cuando vayan terminando.\n\n")
 
 cl <- makeCluster(n_cores)
