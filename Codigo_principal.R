@@ -1192,6 +1192,26 @@ ganador_rf <- empatadas[which.max(empatadas$mejora_RMSE), ]
 cat("M3 ganador con la búsqueda ampliada:", ganador_rf$config, "| mejora MAE:", ganador_rf$mejora_MAE,
     "| mejora RMSE:", ganador_rf$mejora_RMSE, "\n")
 
+
+# REAJUSTE DEL MODELO FINAL CON EL GANADOR DE LA BÚSQUEDA AMPLIADA
+# cfg y rf_full se habían calculado con el ganador ANTES de ampliar la búsqueda (mtry 5).
+# Se recalculan para que la prueba final, la importancia de variables y las
+# sensibilidades S1 y S3 usen la configuración realmente elegida.
+cfg <- configs_rf[configs_rf$config == ganador_rf$config, ]
+set.seed(3407)
+rf_full <- randomForest(
+  x = train_full[, vars_rf],
+  y = train_full$cambio_manana,
+  ntree    = n_arboles,
+  mtry     = cfg$mtry,
+  nodesize = cfg$nodesize,
+  sampsize = tam_submue,
+  importance = TRUE
+)
+cat("\n=== IMPORTANCIA DE VARIABLES (RF final,", ganador_rf$config, ") ===\n")
+print(round(importance(rf_full), 2))
+
+
 # comparamos año a año entre mtry 5 y mtry 8 ambos con nodesize 5
 comparacion_mtry <- merge(subset(por_anio_rf, config == "mtry5_nodo5"),
                           subset(por_anio_rf, config == "mtry8_nodo5"),

@@ -116,13 +116,13 @@ La **población de estudio** corresponde a las observaciones diarias de las 30 c
 
 La **unidad de observación** se define como un par entre la cuenca y la fecha, de manera que ambas variables en conjunto identifican cada registro. Se define $Q_t$ como el caudal observado en una cuenca durante el día de origen $t$, con $t \in \{1, 2, \cdots, 6.210\}$ correspondiente a las fechas disponibles.
 
-La **variable respuesta** corresponde al caudal del día siguiente definido como $Q_{t+1}$.
+La **variable respuesta** corresponde al caudal observado en la cuenca $i$ el día siguiente al de origen, $Q_{i,t+1}$, medido en m³/s.
 
 \underline{Muestra analítica}
 
-Para construir la muestra analítica (Figura \ref{fig:diagrama}) se reestructuró inicialmente $\texttt{caudal\_m3s.csv}$ que contiene 6.210 filas y 30 columnas correspondientes a las fechas e identificadores de las cuencas (respectivamente), de tal manera que en el resultado, cada fila contenga el par (ID cuenca - fecha $t$), generando un total de 186.300 observaciones (Tabla \ref{tab:muestra}).
+Para construir la muestra analítica (Figura \ref{fig:diagrama}) se reestructuró inicialmente $\texttt{caudal\_m3s.csv}$ que contiene 6.210 filas y 31 columnas (una con la fecha y 30 con los identificadores de las cuencas), de tal manera que en el resultado, cada fila contenga el par (ID cuenca - fecha $t$), generando un total de 186.300 observaciones (Tabla \ref{tab:muestra}).
 
-Posteriormente, las tres series se integraron mediante el identificador de cuenca y la fecha, obteniendo una base con la información del caudal de la cuenca $Q$, la precipitación $P$ y la temperatura media Temp , estableciendo relaciones uno a uno entre registros. Se verificó la unicidad de las claves y la conservación de las 186.300 observaciones después de cada unión, manteniendo las 30 cuencas originales, sin duplicados.
+Posteriormente, las tres series se integraron mediante el identificador de cuenca y la fecha, obteniendo una base con la información del caudal de la cuenca $Q$, la precipitación $P$ y la temperatura media $T$, estableciendo relaciones uno a uno entre registros. Se verificó la unicidad de las claves y la conservación de las 186.300 observaciones después de cada unión, manteniendo las 30 cuencas originales, sin duplicados.
 
 Se identifican 3.038 valores faltantes del caudal y una observación con valor cero correspondiente a la cuenca del río Toltén, en la Región de La Araucanía, el 1 de enero de 2003. La cuenca del río Toltén presenta un clima templado cálido lluvioso con influencia mediterránea en sus sectores medio y bajo, y un clima templado frío lluvioso con influencia mediterránea en su sector precordillerano (Dirección General de Aguas [DGA], 2004, p. 5). Considerando estas características, el registro de caudal cero fue identificado como anómalo. Dado que el análisis contempla transformaciones logarítmicas, se decidió tratar dicho registro como un valor faltante, sin confirmar un error de medición. Con ello, se obtuvo un total de 3.039 registros de caudal faltantes.
 
@@ -169,7 +169,9 @@ Adicionalmente, se construyeron variables predictoras a partir de la informació
 La disponibilidad de estos predictores redujo la muestra a 181.899 registros completos. Finalmente, se estableció una separación temporal entre el período de desarrollo, correspondiente a 2000–2012, y el período reservado para prueba final, correspondiente a 2013–2016. Las observaciones se asignaron considerando la fecha de la respuesta, de modo que la información del período de prueba no se utilizara para el desarrollo de los modelos. La muestra quedó conformada por 139.938 registros de desarrollo y 41.961 de prueba.
 
 A la hora de construir la base de datos para la elaboración de modelos, es importante considerar que las variables utilizadas como predictores deben estar disponibles en la fecha $t$ para poder predecir $t+1$. En caso contrario, se incurre en fuga de información, pues el modelo se construye utilizando información futura.
-Por ello, es importante mencionar que las variables: $Q_t$, $Q_{t-1}$, $P_t$, $P_{t-1}$, la precipitación acumulada en las últimas 3, 7 y 30 fechas, además de la temperatura promedio de las últimas 7 fechas son conocidos en la fecha que se realiza la predicción $t$, por lo que su uso no implica fuga de información. Por su parte, el archivo $\texttt{atributos.csv}$ contiene grupos de variables que, de ser usadas como predictoras, provocarían una fuga de información, como por ejemplo, medidas de resumen (promedios, medianas, etc) calculadas en base a la totalidad de los datos (Tabla \ref{tab:variables}).
+Por ello, es importante mencionar que las variables: $Q_t$, $Q_{t-1}$, $P_t$, $P_{t-1}$, la precipitación acumulada en los últimos 3, 7 y 30 días (incluido el día $t$), además de la temperatura promedio de los últimos 7 días, son conocidas en la fecha en que se realiza la predicción $t$, por lo que su uso no implica fuga de información. Por su parte, el archivo $\texttt{atributos.csv}$ contiene grupos de variables que, de ser usadas como predictoras, provocarían una fuga de información, como por ejemplo, medidas de resumen (promedios, medianas, etc.) calculadas en base a la totalidad de los datos (Tabla \ref{tab:variables}).
+
+Se distinguió además el identificador de cada cuenca de sus características físicas. En los modelos principales, cada cuenca se representa mediante su código, mientras que los atributos físicos estables se utilizaron solo para describir los resultados y en un análisis de sensibilidad.
 
 ```{=latex}
 \begin{table}[H]
@@ -213,7 +215,7 @@ cuenca & Incluir & Id de cuenca. \\
 \hline
 $Q_{t+1}$ & Excluir & Variable respuesta \\
 \hline
-cambio\_manana & Excluir & log($Q_{t+1}$) - log($Q_t$)\\
+cambio\_manana & Excluir & Respuesta transformada; objetivo del ajuste \\
 \hline
 \end{tabularx}
 
@@ -227,17 +229,17 @@ cambio\_manana & Excluir & log($Q_{t+1}$) - log($Q_t$)\\
 \hline
 Categoría & Decisión & Motivo \\
 \hline
-Topografía & Incluir & Características estables \\
+Topografía & Admisible & Estable; solo en sensibilidad y diagnóstico \\
 \hline
-Geología & Incluir & Cambio lento \\
+Geología & Admisible & Cambio lento; no utilizada \\
 \hline
-Cobertura terrestre & Evaluar & Puede cambiar en el tiempo \\
+Cobertura terrestre & Admisible & Puede cambiar; solo en sensibilidad \\
 \hline
 Índices climáticos & Excluir & Fuga de información \\
 \hline
 Índices hidrológicos & Excluir & Fuga de información \\
 \hline
-Intervención humana & Evaluar & Puede variar temporalmente \\
+Intervención humana & Admisible & Embalses; solo en sensibilidad y diagnóstico \\
 \hline
 \end{tabularx}
 
@@ -254,7 +256,7 @@ Intervención humana & Evaluar & Puede variar temporalmente \\
 
 Dada la naturaleza temporal de los datos, se implementó un esquema de partición temporal que respeta el orden cronológico de las observaciones, separando las destinadas al desarrollo (2000 al 2012) de las destinadas para la etapa de prueba (2013 al 2016).
 
-Dentro del período de desarrollo se realizaron siete validaciones anuales, correspondientes a los años 2006–2012. Para cada validación, el modelo se entrenó con los datos de los años anteriores y se evaluó en el año siguiente. Por ejemplo, **para validar en 2006 se utilizaron los datos desde el año 2000 al 2005 como entrenamiento**; para validar en 2007, se utilizaron los datos entre el 2000 y 2006, y así sucesivamente hasta 2012. Este procedimiento permitió evaluar los modelos en distintos años, aumentando progresivamente la información disponible para el entrenamiento y evitando fugas de información (Figura \ref{fig:diseno}). 
+Dentro del período de desarrollo se realizaron siete validaciones anuales, correspondientes a los años 2006–2012. Para cada validación, el modelo se entrenó con los datos de los años anteriores y se evaluó en el año siguiente. Por ejemplo, **para validar en 2006 se utilizaron los datos desde el año 2000 al 2005 como entrenamiento**; para validar en 2007, se utilizaron los datos entre el 2000 y 2006, y así sucesivamente hasta 2012. Este procedimiento permitió evaluar los modelos en distintos años, aumentando progresivamente la información disponible para el entrenamiento y evitando fugas de información (Figura \ref{fig:diseno}). Para que todas las respuestas del entrenamiento fueran conocidas antes del inicio de la validación, el entrenamiento incluyó días de origen solo hasta el 30 de diciembre del año previo; así, la última respuesta utilizada corresponde al 31 de diciembre y ninguna observación de entrenamiento utiliza el caudal de un día del año de validación. El mismo criterio se aplicó al separar el desarrollo de la prueba final.
 
 Se eligió comenzar la validación en 2006 para disponer de aproximadamente seis años de información histórica durante el primer entrenamiento. Asimismo, utilizar siete ventanas permitió considerar diferentes condiciones hidrometeorológicas, evitando que la elección del modelo dependiera exclusivamente del desempeño observado en un único año.
 
@@ -271,11 +273,11 @@ Los resultados de estas validaciones se utilizaron para seleccionar la configura
 
 \underline{Información disponible al momento de predecir}
 
-Para la $i$-ésima cuenca, la predicción $Q_{i, t+1}$ se realiza al cierre del día $t$. En consecuencia, los predictores deben ser conocidos al momento de realizar la predicción, tal como fue mencionado en el apartado anterior.
+Para la $i$-ésima cuenca, la predicción $\hat{Q}_{i, t+1}$ se realiza al cierre del día $t$. En consecuencia, los predictores deben ser conocidos al momento de realizar la predicción, tal como fue mencionado en el apartado anterior.
 
 Las precipitaciones acumuladas de 3, 7 y 30 días y la temperatura promedio de 7 días se construyen utilizando exclusivamente observaciones hasta $t$, por lo que no se incurre en una fuga de información futura al usar dichas variables como predictores. El caudal del día siguiente $Q_{t+1}$ se reserva para construir la respuesta y evaluar las predicciones, pues incorporarlo en los modelos implicaría predecir el futuro con información del futuro.
 
-Se supone que la información meteorológica del día $t$ se encuentra disponible al finalizar dicho día, de manera que puede ser utilizada para predecir el caudal del día siguiente.
+Se supone que la información meteorológica del día $t$ se encuentra disponible al finalizar dicho día, de manera que puede ser utilizada para predecir el caudal del día siguiente. Dado que los productos meteorológicos utilizados corresponden a reconstrucciones posteriores, el ejercicio constituye una evaluación retrospectiva bajo este supuesto de disponibilidad y no mide el desempeño operativo de un pronóstico en tiempo real.
 
 \underline{Métricas y referencias de comparación}
 
@@ -285,7 +287,7 @@ $$
 \hat{Q}_{i, t+1}^{\text{persistencia}}=Q_{i, t}
 $$ {#eq-persis}
 
-Adicionalmente, se consideró una referencia estacional que predice el caudal del día siguiente utilizando la mediana histórica de los caudales observados en cada cuenca durante el mismo mes del año que se desea predecir. Esta mediana se calculó exclusivamente con los datos de entrenamiento de cada período, evitando incorporar información de las observaciones utilizadas para la evaluación. El uso de la mediana permite reducir la influencia de caudales extremos sobre esta referencia.
+Adicionalmente, se consideró una referencia estacional que predice el caudal del día siguiente mediante la mediana de los caudales diarios observados en la misma cuenca y en el mismo mes calendario del día a predecir, considerando todos los años del período de entrenamiento. De este modo, todos los días de un mismo mes reciben la misma predicción. En cada ventana de validación esta mediana se calculó exclusivamente con los años anteriores al año evaluado, y para la prueba final se utilizó el período completo de desarrollo (2000–2012), evitando incorporar información de las observaciones utilizadas para la evaluación. El uso de la mediana permite reducir la influencia de caudales extremos sobre esta referencia.
 
 El desempeño de los modelos se comparó principalmente con la mejora relativa ([-@eq-mejora]) del MAE ([-@eq-mae]) y RMSE ([-@eq-rmse]) con respecto a la persistencia. Un resultado positivo indica que el modelo reduce el error respecto a la persistencia; un valor igual a cero representa un desempeño equivalente, mientras que uno negativo indica que el modelo presenta un error mayor.
 
@@ -311,9 +313,9 @@ $$ {#eq-rmse}
 
 Para comparar los modelos, primero se calcularon el MAE y el RMSE de cada procedimiento y de persistencia, utilizando los mismos días disponibles para cada cuenca y año de validación. A partir de estos valores se obtuvo la mejora relativa de cada modelo para cada cuenca.
 
-Posteriormente, para cada año de validación se calculó la mediana de las mejoras de las 30 cuencas, con el objetivo de evitar que unos pocos resultados extremos influyeran excesivamente en la comparación. Finalmente, se promediaron las medianas obtenidas en las siete ventanas de validación (2006–2012), de manera que cada año tuviera la misma importancia en el resultado general.
+Posteriormente, para cada año de validación se calculó la mediana de las mejoras de las 30 cuencas. Como la mejora es relativa al error de persistencia de cada cuenca, esta agregación da el mismo peso a cada río y evita que el resultado quede dominado por las cuencas de mayor caudal o por unos pocos resultados extremos. Finalmente, se promediaron las medianas obtenidas en las siete ventanas de validación (2006–2012), de manera que cada año tuviera la misma importancia en el resultado general.
 
-Para seleccionar la mejor configuración de cada procedimiento y posteriormente el modelo recomendado, se utilizó como criterio principal la mayor mejora promedio del MAE frente a persistencia. Cuando las diferencias entre las alternativas eran de hasta 0,5 puntos porcentuales respecto de la mayor mejora en MAE, se utilizó la mejora del RMSE como criterio de desempate, seleccionando aquella configuración que presentara la mayor reducción de este error.
+Para seleccionar la mejor configuración de cada procedimiento y posteriormente el modelo recomendado, se utilizó como criterio principal la mayor mejora promedio del MAE frente a persistencia, por ser la métrica principal del análisis. Cuando las diferencias entre las alternativas eran de hasta 0,5 puntos porcentuales respecto de la mayor mejora en MAE, se utilizó la mejora del RMSE como criterio de desempate, seleccionando aquella configuración que presentara la mayor reducción de este error. Por una omisión en el código, en M1 la configuración se seleccionó únicamente según la mayor mejora en MAE, sin aplicar el criterio de desempate (ver sección de Reproducibilidad).
 
 La selección se realizó utilizando exclusivamente los resultados del período de desarrollo. Posteriormente, los modelos se evaluaron en el período de prueba final (2013–2016), sin modificar las configuraciones seleccionadas.
 
@@ -329,14 +331,11 @@ reciente del río (cambio_hoy) y su nivel actual ($\log Q_t$), con un mismo efec
 Al permitir que cada cuenca tuviera su propia velocidad de descenso del caudal, y luego su propia respuesta a la precipitación,
  el error bajó de forma consistente. En la validación de 2012 este modelo redujo el MAE en torno a un 11 % respecto de persistencia 
  y superó a esta referencia en 26 de las 30 cuencas. Esto confirmó que la heterogeneidad entre cuencas es un componente central
-  del problema. Finalmente, se incorporaron la temperatura del día, la temperatura promedio de los últimos 7 días y el mes, para 
-  capturar el efecto de la estacionalidad y del deshielo.
+  del problema. Finalmente, se incorporaron la temperatura del día, la temperatura promedio de los últimos 7 días y el mes, con el fin de representar la estacionalidad y el deshielo. Aunque en la regresión lineal estas variables no mejoraron de forma consistente el desempeño, se mantuvieron en la especificación común, ya que los modelos más flexibles podrían aprovechar relaciones no lineales o interacciones con ellas. Toda esta construcción utilizó exclusivamente datos del período de desarrollo.
 
-La especificación resultante se utilizó como punto de partida común: M1 emplea exactamente estos predictores,
- mientras que M2 y M3 utilizan la misma información, pero con mayor flexibilidad para representar relaciones no lineales 
- e interacciones (Tabla \ref{tab:predictores}).
+La especificación resultante se utilizó como punto de partida común. Los tres procedimientos utilizan los mismos once predictores, todos disponibles al cierre del día $t$; lo que difiere entre ellos es la forma en que se incorporan. M1 emplea exactamente esta especificación, mientras que M2 y M3 la representan con mayor flexibilidad, lo que les permite capturar relaciones no lineales e interacciones (Tabla \ref{tab:predictores}). De este modo, las diferencias de desempeño entre procedimientos pueden atribuirse a su estructura y no a la información utilizada.
 
- ```{=latex}
+```{=latex}
 \begin{table}[H]
 \centering
 \footnotesize
@@ -357,12 +356,13 @@ Cuenca (código) & Intercepto propio & Intercepto propio & Categórica \\
 \hline
 Efectos propios por cuenca & Pendientes para $\log Q_t$, $P_t$, $P_{t-1}$, lluvia 3 días y $\texttt{temp\_7d}$ & Curvas para $\log Q_t$ y $P_t$ ($k=5$) & No se especifican; los árboles las aprenden \\
 \hline
-Configuración elegida & $\lambda = 0{,}001$ & Estructura C, $k=10$ & $\mathrm{mtry}=8$, $\mathrm{nodesize}=5$ \\
+Configuración elegida & Ridge, $\lambda = 0{,}03$ & Estructura C, $k=10$ & $\mathrm{mtry}=8$, $\mathrm{nodesize}=5$ \\
 \hline
 \end{tabularx}
 \caption{Predictores y su forma de inclusión en cada procedimiento}
 \label{tab:predictores}
 \end{table}
+```
 
 \underline{Modelos aplicados}
 
@@ -370,7 +370,7 @@ Para predecir el caudal del día siguiente se utilizaron tres procedimientos est
 
 \underline{M1: Regresión penalizada (Ridge y Lasso)}
 
-Ridge reduce la magnitud de los coeficientes sin eliminarlos, mientras que Lasso puede llevar algunos de ellos a cero. Una de sus grandes ventajas es que permite controlar la complejidad del modelo mientras captura la relación lineal entre los predictores y la variable respuesta.
+Ridge reduce la magnitud de los coeficientes sin eliminarlos, mientras que Lasso puede llevar algunos de ellos a cero. Una de sus grandes ventajas es que permite controlar la complejidad del modelo mientras captura la relación lineal entre los predictores y la variable respuesta. En este caso, la penalización se aplica sobre la especificación base descrita anteriormente, que incluye efectos específicos por cuenca, por lo que el modelo es lineal en sus parámetros pero permite que cada río responda de forma distinta. Para que la penalización trate a todas las cuencas por igual, el identificador de cuenca se codificó sin una cuenca de referencia.
 Se espera que M1 capture el comportamiento promedio del caudal y las diferencias entre cuencas, gracias a sus efectos específicos por río. Sin embargo, al suponer relaciones lineales, podría fallar en crecidas, donde la respuesta del caudal a la precipitación no es proporcional, y en cuencas con deshielo, donde la temperatura y la estación interactúan de forma más compleja.
 
 \underline{M2: Modelo aditivo generalizado (GAM)}
@@ -382,35 +382,39 @@ Se espera que el GAM mejore a M1 en eventos de lluvia intensa y en la recesión 
 
 \underline{M3: Random Forest}
 
-Consiste en una combinación de múltiples árboles de decisión para generar las predicciones. Permite representar relaciones no lineales, pero tiene la ventaja de que además permite considerar interacciones a priori desconocidas entre las variables explicativas.
+Consiste en una combinación de múltiples árboles de decisión para generar las predicciones. Permite representar relaciones no lineales, pero tiene la ventaja de que además permite considerar interacciones a priori desconocidas entre las variables explicativas. A diferencia de M1 y M2, utiliza las precipitaciones sin transformar, ya que los árboles no se ven afectados por la asimetría de los predictores.
+
+Se espera que el Random Forest capture interacciones entre predictores sin necesidad de especificarlas, por ejemplo, que la misma lluvia tenga efectos distintos según la temperatura o la época del año. Sin embargo, sus predicciones se construyen promediando situaciones observadas en el entrenamiento, por lo que no puede extrapolar fuera de ese rango. Esto podría afectarlo ante caudales extremos nunca observados o ante condiciones persistentemente distintas, como una sequía prolongada. Además, es el modelo menos interpretable de los tres.
 
 La comparación de M1, M2 y M3 permitió evaluar si una mayor flexibilidad del modelo se traducía en una mejora de la capacidad predictiva.
-Se espera que el Random Forest capture interacciones entre predictores sin necesidad de especificarlas, por ejemplo, que la misma lluvia tenga efectos distintos según la temperatura o la época del año. Sin embargo, sus predicciones se construyen promediando situaciones observadas en el entrenamiento,
- por lo que no puede extrapolar fuera de ese rango. Esto podría afectarlo ante caudales extremos nunca observados o ante condiciones persistentemente distintas, como una sequía prolongada. Además, es el modelo menos interpretable de los tres.
 
 
 
 \underline{Preprocesamiento de los datos}
 
-Para el ajuste de los tres procedimientos se utilizó como variable respuesta el cambio logarítmico del caudal entre días consecutivos:
+Si bien la respuesta de interés es el caudal del día siguiente $Q_{i,t+1}$ en m³/s, los tres procedimientos se ajustaron para predecir el cambio logarítmico del caudal entre días consecutivos:
 
 $$
 Y_{i,t}=\log(Q_{i,t+1})-\log(Q_{i,t})
-$$ 
+$$ {#eq-cambio}
+
+donde $\log$ corresponde al logaritmo natural. Un valor $Y_{i,t}=0$ indica que el caudal se mantiene, lo que equivale a la predicción de persistencia, mientras que valores positivos o negativos representan, aproximadamente, el aumento o la disminución porcentual del caudal. Esta transformación requiere caudales estrictamente positivos, por lo que el registro con caudal cero se trató previamente como faltante.
 
 Se aplicó esta transformación por la asimetría de la distribución del caudal y por las diferencias de magnitud entre cuencas. Para las variables de precipitación utilizadas en M1 y M2 se aplicó la transformación $\log(1+x)$ con el fin de reducir la asimetría y poder trabajar con observaciones cuya precipitación es igual a cero.
 
-Una vez obtenidas las predicciones del cambio logarítmico, estas se transformaron nuevamente a la escala original de caudal:
+Una vez obtenida la predicción del cambio logarítmico $\hat{Y}_{i,t}$, el caudal del día siguiente se recupera en la escala original como:
 
-$$\hat{Q}_{i,t+1} = Q_{i,t}\, e^{\hat{Y}_{i,t}},$$
+$$
+\hat{Q}_{i,t+1} = Q_{i,t}\, e^{\hat{Y}_{i,t}}
+$$ {#eq-retrans}
 
-expresada en $\frac{m^3}{s}$.
+expresado en m³/s. Dado que los modelos estiman el cambio esperado en escala logarítmica, esta retransformación no entrega la media del caudal del día siguiente, sino un valor que tiende a subestimarla. Si el cambio logarítmico se distribuye de forma aproximadamente simétrica, este valor corresponde a la mediana condicional del caudal, lo que resulta coherente con utilizar el MAE como métrica principal. No se aplicó una corrección de sesgo en la retransformación.
 
 \underline{Hiperparámetros y presupuesto de búsqueda}
 
 Para cada modelo se definió una grilla de valores para sus hiperparámetros, los cuales se compararon utilizando el diseño de validación temporal con origen creciente previamente descrito (Tabla \ref{tab:hiperparametros}).
 
-Para M1 se comparan 16 combinaciones de hiperparámetros, considerando coeficientes asociados a Ridge ($\alpha = 0$), Lasso ($\alpha = 1$), y ocho valores distintos de $\lambda$.
+Para M1 se comparan 16 combinaciones de hiperparámetros, considerando coeficientes asociados a Ridge ($\alpha = 0$), Lasso ($\alpha = 1$), y ocho valores distintos de $\lambda$. Con $\lambda = 0$ ambas alternativas coinciden con la regresión lineal sin penalización, por lo que en la práctica se evaluaron 15 modelos distintos. Una grilla inicial con valores de $\lambda$ entre 1 y 10 se descartó porque en todos los casos producía un modelo equivalente a persistencia, con todos los coeficientes anulados.
 
 ```{=latex}
 \begin{table}[H]
@@ -443,18 +447,15 @@ Para M2 se evalúan tres estructuras distintas:
 - B: agrega una función suave de la precipitación actual específica por cuenca.
 - C: incorpora también una función suave específica por cuenca para el logaritmo del caudal actual.
 
-Se evalúan $k=5$ y $k=10$ como valores que regulan la flexibilidad máxima de las funciones suaves, obteniendo seis configuraciones. Además, con k = 10, 
-varias de las curvas comunes del GAM utilizaban prácticamente toda la flexibilidad permitida, lo que indicaba que el límite fijado podía estar restringiendo la forma de esas relaciones. Por ello, se evaluó una configuración adicional con k = 15. Esta no mejoró el desempeño en desarrollo, por lo que se mantuvo k = 10.”
+Se evalúan $k=5$ y $k=10$ como valores que regulan la flexibilidad máxima de las curvas comunes a todas las cuencas, obteniendo seis configuraciones; las curvas específicas por cuenca se mantuvieron con $k=5$ en todos los casos. El mes y el identificador de cuenca se incorporaron como términos categóricos. Los parámetros de suavizado se estimaron dentro de cada ajuste mediante REML.
 
-A partir de los diagnósticos realizados durante el desarrollo, se amplió la búsqueda incorporando una séptima configuración correspondiente a la estructura C con $k=15$. Los parámetros de suavizado se estimaron dentro de cada ajuste mediante REML.
+Con $k=10$, varias de las curvas comunes utilizaban prácticamente toda la flexibilidad permitida, lo que indicaba que el límite fijado podía estar restringiendo la forma de esas relaciones. Por ello, se amplió la búsqueda con una séptima configuración, correspondiente a la estructura C con $k=15$. Esta no mejoró el desempeño en desarrollo, por lo que se mantuvo $k=10$.
 
 Para M3 se evalúan distintas combinaciones de dos hiperparámetros: 
 - $\texttt{mtry}$: número de predictores considerados aleatoriamente en cada división de los árboles.
 - $\texttt{nodesize}$: establece el tamaño mínimo de los nodos terminales.
 
-Inicialmente se evaluaron tres valores de $\texttt{mtry}$ y dos de $\texttt{nodesize}$, obteniendo seis configuraciones.
-
-Más tarde se amplió la búsqueda, incluyendo una séptima configuración.
+Inicialmente se evaluaron tres valores de $\texttt{mtry}$ (2, 3 y 5) y dos de $\texttt{nodesize}$ (5 y 25), obteniendo seis configuraciones. Como la mejor configuración inicial correspondía al mayor valor de $\texttt{mtry}$ de la grilla, se amplió la búsqueda con una séptima configuración ($\texttt{mtry}=8$, $\texttt{nodesize}=5$), que mejoró levemente el desempeño en desarrollo (36,6 % frente a 36,0 % de mejora en MAE) y fue la configuración seleccionada.
 
 En todos los ajustes se utilizaron 200 árboles y una submuestra de entrenamiento de 20.000 observaciones por árbol, manteniendo estos valores fijos durante la comparación de configuraciones.
 
@@ -486,14 +487,14 @@ incluso cuando las condiciones climáticas cambian drásticamente hacia un clima
 % TABLA IZQUIERDA
 \begin{minipage}[t]{0.48\textwidth}
 \centering
-\textbf{Tabla 1. Desarrollo (2006-2012)}
+\textbf{Desarrollo (2006--2012)}
 \vspace{0.2cm}
 
 \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
 \hline
-\textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Peor año (MAE)} & \textbf{Ríos donde gana} \\
+\textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Peor año (MAE)} & \textbf{Pares río–año (de 210)} \\
 \hline
-\textbf{M3 Random Forest} & \textbf{36.6\%} & \textbf{31.0\%} & 29.7\% & 197 \\
+\textbf{M3 Random Forest} & \textbf{36.6\%} & \textbf{31.0\%} & 29.7\% & 199 \\
 \hline
 M2 GAM & 27.0\% & 26.1\% & 19.9\% & 180 \\
 \hline
@@ -516,6 +517,7 @@ Estacional & -276.3\% & -123.6\% & -439.6\% & 0 \\
 \hline
 \textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Ríos gana} & \textbf{Días evaluados} \\
 \hline
+% ACTUALIZAR fila M3 tras la nueva corrida
 \textbf{M3 Random Forest} & \textbf{35.9\%} & \textbf{28.2\%} & 29 & 41.961 \\
 \hline
 M2 GAM & 25.6\% & 21.3\% & 27 & 41.961 \\
@@ -524,8 +526,12 @@ M1 Ridge/Lasso & 14.1\% & 11.1\% & 26 & 41.961 \\
 \hline
 Persistencia & 0.0\% & 0.0\% & 0 & 41.961 \\
 \hline
+Estacional & -265.9\% & -107.7\% & 0 & 41.961 \\
+\hline
 \end{tabularx}
 \end{minipage}
+\caption{Mejora mediana frente a persistencia en desarrollo (promedio de 7 ventanas) y en la prueba final. La columna de la derecha de cada tabla indica en cuántos pares río–año o cuencas el modelo superó a la persistencia.}
+\label{tab:comparacion}
 \end{table}
 
 Con la finalidad de comprender en que se basa Random Forest para realizar sus predicciones, 
@@ -621,6 +627,8 @@ Indica el código utilizado, los datos y las contribuciones del equipo.
 Washington State Department of Ecology. (s. f.). *What is a watershed and why does it matter?*, <https://ecology.wa.gov/ecologys-work-near-you/river-basins-groundwater/what-is-a-watershed-and-why-does-it-matter>
 
 Alvarez-Garreton, C., Mendoza, P. A., Boisier, J. P., Addor, N., Galleguillos, M., Zambrano-Bigiarini, M., Lara, A., Puelma, C., Cortes, G., Garreaud, R., McPhee, J., & Ayala, A. (2018). The CAMELS-CL dataset: Catchment attributes and meteorology for large sample studies – Chile dataset. *Hydrology and Earth System Sciences, 22*(11), 5817–5846. https://doi.org/10.5194/hess-22-5817-2018
+
+Garreaud, R. D., Boisier, J. P., Rondanelli, R., Montecinos, A., Sepúlveda, H. H., & Veloso-Aguila, D. (2020). The Central Chile Mega Drought (2010–2018): A climate dynamics perspective. *International Journal of Climatology, 40*(1), 421–439. https://doi.org/10.1002/joc.6219
 
 Dirección General de Aguas. (2004). *Diagnóstico y clasificación de los cursos y cuerpos de agua según objetivos de calidad: Cuenca del río Toltén*.
 
