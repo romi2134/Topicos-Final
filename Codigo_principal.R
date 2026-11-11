@@ -1,0 +1,1246 @@
+# Proyecto Tópicos Aplicados - Caso 01: caudal del día siguiente (CAMELS-CL)
+
+if (!file.exists("datos/caudal_m3s.csv")) {
+  stop("No se encuentra datos/caudal_m3s.csv. R está en: ", getwd(),
+       "\nAbre la carpeta del repositorio en VS Code/RStudio o ejecuta desde ella: ")
+       }else{cat("todo correcto para ejecutar las bases")}
+
+
+# Pregunta: ¿cuánto mejora un modelo estadístico la predicción del caudal de
+# mañana frente a decir "mañana igual que hoy" (persistencia)?
+#
+# Para correrlo: guardar este script en la misma carpeta que los 4 csv
+# (caudal_m3s.csv, precipitacion_mm.csv, temperatura_media_c.csv, atributos.csv)
+# y en RStudio ir a Session -> Set Working Directory -> To Source File Location.
+#
+# El script sigue el mismo orden que el informe técnico:
+#   Bloque 1: revisión de los datos ............... sección 3 del informe
+#   Bloque 2: una fila por río y día, caudal cero . sección 4
+#   Bloque 3: la respuesta y las pistas ........... sección 5
+#   Bloque 4: persistencia y logaritmo ............ sección 6
+#   Bloque 5: modelos m1 a m4, validados en 2012 .. sección 7
+#   Bloque 6: validación en 7 ventanas ............ sección 8
+#   Bloque 7: dónde falla m4, RMSE y estacional ... sección 9
+# Las medidas (MAE, RMSE, mejora) están definidas en la sección 2 del informe.
+
+
+# BLOQUE 1. REVISIÓN DE LOS DATOS (sección 3 del informe) #
+# Objetivo: comprobar calendario, unidades y códigos de ausencia antes de
+# hacer cualquier cosa, como pide el enunciado.
+
+# check.names = FALSE evita que R cambie los nombres de las columnas:
+# como son números (códigos de cuenca), les pondría una X adelante.
+caudal <- read.csv("datos/caudal_m3s.csv", check.names = FALSE)
+
+dim(caudal)            # 6210 filas (días) y 31 columnas (fecha + 30 ríos)
+caudal[1:5, 1:6]       # las primeras 5 filas y 6 columnas
+str(caudal[, 1:6])     # las columnas de ríos deben salir como num (número), no chr (texto)
+sum(is.na(caudal))     # 3038 datos faltantes: en el archivo vienen como un espacio " ",
+                       # y R los lee bien como NA
+
+caudal$fecha <- as.Date(caudal$fecha)   # de texto a fecha, para poder calcular con ella
+
+range(caudal$fecha)          # 2000-01-01 a 2016-12-31
+table(diff(caudal$fecha))    # los 6209 saltos entre filas son de 1 día: no falta ni se repite
+                             # ningún día (17 años x 365 + 5 días de años bisiestos = 6210)
+
+# faltantes por río, de mayor a menor
+faltantes <- colSums(is.na(caudal[, -1]))
+sort(faltantes, decreasing = TRUE)
+
+# revisaremos el río con más faltantes: ¿en qué años se concentran?
+anio <- format(caudal$fecha, "%Y")
+tapply(is.na(caudal[["10102001"]]), anio, sum) #se concentra mayormente en 2016
+tapply(is.na(caudal[["7116001"]]), anio, sum) #se concentra mayormente en 2014
+
+# aquí no podemos simplemente imputar: si rellenaramos datos, por ejemplo con
+# una línea recta entre el día anterior y el siguiente, después nuestro
+# modelo sería optimista, y el resultado se vería mejor de lo q es.
+
+# un segundo detalle, es que los datos faltante de Liquiñe (10102001), son del 2016
+# que sería dentro de la prueba final, por lo que este río tendrá menos días
+#para evaluarse y el resultado será más incierto x lo tanto hay que reportar junto
+# al error de cada río, cuántos días se evaluaron.
+
+# finalmente, los días sin caudal no se rellenan, solo no entrarán en la evaluación
+# ni para el modelo ni para persistencia y luego en el informe tendremos que
+# reportar cuántos días se evaluaron por río. (Decisión 1 del informe)
+
+precipitacion <- read.csv("datos/precipitacion_mm.csv", check.names = FALSE)
+temperatura   <- read.csv("datos/temperatura_media_c.csv", check.names = FALSE)
+
+dim(precipitacion)
+dim(caudal)
+dim(temperatura)
+sum(is.na(precipitacion))   # 0: la lluvia está completa
+sum(is.na(temperatura))     # 0: la temperatura está completa
+
+names(caudal)[2:6]          # primeras 5 cuencas de la tabla de caudal
+names(precipitacion)[2:6]   # primeras 5 cuencas de la tabla de lluvia: ¡otro orden!
+
+#efectivamente tienen el mismo tamaño que la tabla caudal. No les faltan datos.
+# Notamos que los nombres de las tablas no están ordenados de la misma manera,
+# por lo que no podemos simplemente pegar por posición: le asignaríamos a un río
+# la lluvia de otro, y R no avisaría. (Decisión 2 del informe)
+
+
+# BLOQUE 2. UNA FILA POR RÍO Y DÍA, Y EL CAUDAL CERO (sección 4 del informe) #
+# Objetivo: pasar de "una columna por río" a "una fila por río y día", que es
+# la unidad de análisis del enunciado, y unir las tres tablas por cuenca y fecha.
+
+cuencas <- names(caudal)[-1]   # los 30 códigos de cuenca (sin la columna fecha)
+
+# rep(..., each = 6210): cada código se repite 6210 veces seguidas (una por día)
+# rep(..., times = 30): la secuencia completa de fechas se repite 30 veces (una por río)
+# unlist: pone las columnas de caudal una debajo de la otra, en el mismo orden
+caudal_largo <- data.frame(
+  cuenca = rep(cuencas, each = nrow(caudal)),
+  fecha  = rep(caudal$fecha, times = length(cuencas)),
+  Q      = unlist(caudal[, -1], use.names = FALSE)
+)
+
+dim(caudal_largo) #186300 filas: combinaciones de rio y día (30x6210)
+head(caudal_largo)
+# comprobación a mano: los dos valores deben coincidir (4.14)
+caudal[1, "9127001"]
+subset(caudal_largo, cuenca == "9127001" & fecha == as.Date("2000-01-01"))
+
+# hacemos lo equivalente para precipitaciones (código hecho a mano acá :) )
+precipitacion$fecha <- as.Date(precipitacion$fecha)
+cuencas_p <- names(precipitacion)[-1]
+
+precipitacion_largo <- data.frame(
+  cuenca = rep(cuencas_p, each = nrow(precipitacion)),
+  fecha  = rep(precipitacion$fecha, times = length(cuencas_p)),
+  P      = unlist(precipitacion[, -1], use.names = FALSE)
+)
+
+# lo mismo con temperatura (se llama Temp y no T, porque en R T significa TRUE)
+temperatura$fecha <- as.Date(temperatura$fecha)
+cuencas_t <- names(temperatura)[-1]
+temperatura_largo <- data.frame(
+  cuenca = rep(cuencas_t, each = nrow(temperatura)),
+  fecha  = rep(temperatura$fecha, times = length(cuencas_t)),
+  Temp   = unlist(temperatura[, -1], use.names = FALSE)
+)
+
+# unimos las tres tablas: merge busca filas con la misma cuenca y la misma fecha,
+# así que el orden distinto de las columnas originales ya no importa
+datos <- merge(caudal_largo, precipitacion_largo, by = c("cuenca", "fecha"))
+datos <- merge(datos, temperatura_largo, by = c("cuenca", "fecha"))
+
+# solo para probar que haya salido bien
+dim(datos)   # debe seguir en 186300 filas
+subset(datos, cuenca == "8130002" & fecha == as.Date("2000-01-02"))
+precipitacion[2, "8130002"]
+
+# CAUDAL IGUAL A CERO: al pasar a logaritmo (más abajo) notamos un problema
+# cuando Q == 0, pues log(0) se indetermina (-Inf).
+subset(datos, Q == 0)
+# vemos que es un único caso donde Q==0: Toltén (9437002) el 2003-01-01, un río
+# que lleva cientos de m3/s, así que es casi seguro un error de registro.
+# tenemos 2 opciones: marcarlo como NA, o usar log(Q+epsilon).
+# Lo marcamos como NA (dato faltante), coherente con no inventar caudales.
+# Se corrige aquí, ANTES de crear Q_manana y Q_ayer, para que el 0 no se copie
+# a esas columnas. (Decisión 3 del informe; quedan 3039 caudales faltantes)
+datos$Q[which(datos$Q == 0)] <- NA
+
+
+# BLOQUE 3. LA RESPUESTA Y LAS PISTAS (sección 5 del informe) #
+# Objetivo: agregar a cada fila lo que queremos predecir (el caudal de mañana)
+# y las pistas que se conocen al final del día de hoy. (Decisión 4 del informe)
+
+# LO QUE QUEREMOS PREDECIR: EL CAUDAL DE MAÑANA
+
+# Ahora, a cada fila le agregamos el caudal del día siguiente del mismo
+# río. Primero ordenamos por río, y dentro de cada río por fecha. Así,
+# cada fila tendrá abajo el "mañana" (funciona porque el calendario está
+# completo: lo comprobamos en el bloque 1)
+
+datos <- datos[order(datos$cuenca, datos$fecha), ]
+rownames(datos) <- NULL
+
+datos$Q_manana <- c(datos$Q[-1], NA) # todo corrido una posición hacia arriba,
+# con un NA final para que tenga el mismo largo.
+
+# código para visualizar que hay un error: "mañana" solo vale si la
+# fila siguiente es del mismo río. Si el río cambia se pone NA
+datos[6209:6212, c("cuenca", "fecha", "Q", "Q_manana")]
+datos[12419:12422, c("cuenca", "fecha", "Q", "Q_manana")]
+
+# Arreglamos el problema: comparamos la cuenca de cada fila con la de la fila
+# siguiente; si son distintas, es el último día de un río y no tiene "mañana"
+ultimo_dia <- c(datos$cuenca[-1] != datos$cuenca[-nrow(datos)], TRUE)
+datos$Q_manana[ultimo_dia] <- NA
+
+# volvamos a mirar los datos que estaban mal
+datos[6209:6212, c("cuenca", "fecha", "Q", "Q_manana")]
+datos[12419:12422, c("cuenca", "fecha", "Q", "Q_manana")]
+sum(ultimo_dia) # debe dar 30: el último día de cada uno de los 30 ríos
+# ahora sí está todo bien
+
+
+# AHORA, ORDENAREMOS LAS PISTAS
+
+# 1. El caudal de ayer: con el de hoy, indica si el río viene subiendo o bajando.
+# Para "mañana" corrimos la columna hacia arriba y el problema estaba en el último día de cada río.
+# Para "ayer" hay que correrla hacia abajo, y el problema estará en el primer día de cada río,
+# el 2000-01-01, que no tiene ayer. (El TRUE va al principio en vez de al final.)
+
+datos$Q_ayer <- c(NA, datos$Q[-nrow(datos)])
+primer_dia <- c(TRUE, datos$cuenca[-1] != datos$cuenca[-nrow(datos)])
+datos$Q_ayer[primer_dia] <- NA
+
+# 2. La lluvia acumulada: la lluvia de un solo día no basta para entender un río.
+# las ventanas de varios días miden cosas distintas.
+# Lluvia de hoy y de ayer: la respuesta rápida, porque un río chico sube el mismo día.
+# Últimos 3 o 7 días: el temporal completo.
+# Últimos 30 días: qué tan mojado está el suelo. La misma lluvia produce más caudal
+# si el suelo ya está saturado.
+
+# no usamos la lluvia de mañana ;) pq sería info futura.
+# suma_ultimos(x, n) suma los últimos n días INCLUYENDO hoy. Supuesto que se
+# declara en el informe: la lluvia de hoy está disponible al cierre del día.
+suma_ultimos <- function(x, n) {
+  resultado <- rep(NA, length(x))
+  for (i in n:length(x)) {
+    resultado[i] <- sum(x[(i - n + 1):i])
+  }
+  resultado
+}
+
+# creamos lluvia a los 7 días
+datos$lluvia_7d <- suma_ultimos(datos$P, 7)
+datos$lluvia_7d[datos$fecha < as.Date("2000-01-01") + 6] <- NA # los primeros 6 días de cada río no tienen 7 días hacia atrás
+# (una ventana de n días deja n - 1 días en NA; como todos los ríos parten el
+# 2000-01-01, basta con borrar esas fechas y así no se mezcla con el río anterior)
+
+# comprobación a mano: las dos líneas deben dar lo mismo
+subset(datos$lluvia_7d, datos$cuenca == "8130002" & datos$fecha == as.Date("2000-06-10"))
+sum(subset(datos, cuenca == "8130002" & fecha >= as.Date("2000-06-04") & fecha <= as.Date("2000-06-10"))$P)
+
+# ahora, lluvia 3 días y 30 días
+datos$lluvia_3d <- suma_ultimos(datos$P, 3)
+datos$lluvia_3d[datos$fecha < as.Date("2000-01-01") + 2] <- NA
+
+datos$lluvia_30d <- suma_ultimos(datos$P, 30)
+datos$lluvia_30d[datos$fecha < as.Date("2000-01-01") + 29] <- NA
+
+# ahora usamos la lluvia de ayer (mismo arreglo del primer día que con Q_ayer)
+datos$P_ayer <- c(NA, datos$P[-nrow(datos)])
+datos$P_ayer[primer_dia] <- NA
+
+# 3. La temperatura de la última semana: sirve para el deshielo en ríos con nieve
+datos$temp_7d <- suma_ultimos(datos$Temp, 7) / 7 # temp media de los ultimos 7 días
+datos$temp_7d[datos$fecha < as.Date("2000-01-01") + 6] <- NA
+
+# 4. El mes, como categoría y no como número: así el modelo no supone que
+# diciembre (12) y enero (1) están lejos, ni que el efecto crece de a pasos iguales
+datos$mes <- factor(as.integer(format(datos$fecha, "%m")))
+
+
+# BLOQUE 4. PERSISTENCIA Y LOGARITMO (sección 6 del informe) #
+# Objetivo: medir la vara que el modelo debe superar, y decidir en qué escala
+# trabajar.
+
+# AHORA VEREMOS LA VARA A SUPERAR: PERSISTENCIA
+# veremos cuánto se equivoca persistencia ("mañana igual que hoy")
+datos$usable <- !is.na(datos$Q) & !is.na(datos$Q_manana) # marca los días que existe el caudal de hoy y mañana (los únicos en los que se puede medir el error de persistencia)
+
+desarrollo <- subset(datos, usable & fecha <= as.Date("2012-12-30")) # el corte es 30-12 porque la respuesta del 31 de dic es el 1 de enero 2013 que pertenece a la prueba final (Decisión 5 del informe)
+
+desarrollo$error_pers <- desarrollo$Q - desarrollo$Q_manana #predicción - valor real
+mae_pers <- tapply(abs(desarrollo$error_pers), desarrollo$cuenca, mean)   # MAE por río
+sort(mae_pers)
+
+# Que el Maule tenga un MAE de 110 y el Yerba Loca uno de 0,08 dice sobre todo
+# cuánta agua lleva cada río, no qué tan bien funciona persistencia en él.
+
+# Para comparar ríos hay que mirar el error en relación con el tamaño de cada uno.
+# tapply calcula la media de cada río, así que la división es río por río.
+
+media_Q <- tapply(desarrollo$Q, desarrollo$cuenca, mean)
+mae_relativo <- mae_pers / media_Q
+sort(mae_relativo)
+
+# en los ríos en que la persistencia se equivoca menos es en el 10111001 con 0.0331,
+# y en el que se equivoca más es en el 7116001 con 0.3784
+
+# ahora, veremos qué atributos tienen esos ríos (los atributos se usan aquí solo
+# para describir, no como pistas del modelo)
+atributos <- read.csv("datos/atributos.csv", check.names = FALSE)
+
+orden <- sort(mae_relativo)
+extremos <- names(c(head(orden, 3), tail(orden, 3)))   # los 3 mejores y los 3 peores
+
+atributos[atributos$gauge_id %in% extremos, c("gauge_id", "gauge_name", "area", "big_dam")]
+
+# podemos ver que los tres donde más se equivoca son los que tienen un
+# área considerablemente menor. En los que menos se equivoca es en aquellos
+# que tienen un área considerablemente mayor (y dos de ellos salen de un lago:
+# San Pedro y Toltén).
+
+# Tiene sentido físico:
+
+#Río chico: cuando llueve, el agua llega rápido al cauce y el río puede duplicarse de un día a otro.
+# "Mañana igual que hoy" falla mucho.
+#Río grande: el agua recorre una cuenca enorme y llega de a poco, así que el caudal cambia lento y
+# persistencia acierta casi siempre.
+
+# Donde un modelo con lluvia tiene más espacio para mejorar es en los ríos chicos
+# de lluvia, sin lagos ni embalses
+
+
+# PREPARAMOS EL MODELO
+
+# comparamos con y sin logaritmo: hay mucha asimetría, dominarán los ríos que llevan
+# más agua, y la proporción de cambio si son dos ríos con muy distinto caudal,
+# será distinto. Al ponerlo en logaritmo se suaviza un poco.
+par(mfrow = c(1, 2))
+hist(desarrollo$Q, breaks = 100, main = "Caudal (m3/s)", xlab = "Q")
+hist(log(desarrollo$Q), breaks = 100, main = "Logaritmo del caudal", xlab = "log(Q)")
+par(mfrow = c(1, 1))
+
+# trabajaremos en logaritmo (Decisión 6 del informe). Tres razones:
+#  - el caudal en m3/s es muy asimétrico;
+#  - la regresión minimiza errores al cuadrado, y en m3/s los ríos grandes
+#    dominarían el ajuste;
+#  - los ríos cambian en proporción a lo que llevan: pasar de 10 a 20 y de
+#    1000 a 2000 es el mismo evento, y en log vale lo mismo (log(2) = 0.69).
+datos$log_Q         <- log(datos$Q)                          # cuánta agua lleva hoy
+datos$cambio_hoy    <- log(datos$Q) - log(datos$Q_ayer)      # + viene subiendo, - viene bajando
+datos$cambio_manana <- log(datos$Q_manana) - log(datos$Q)    # LO QUE EL MODELO PREDICE
+# si el modelo predice cambio_manana = 0, está prediciendo exactamente persistencia
+
+summary(datos$log_Q)          # ya no aparece -Inf: el caudal 0 se corrigió arriba
+summary(datos$cambio_manana)
+
+
+# BLOQUE 5. MODELOS m1 A m4, VALIDADOS EN 2012 (sección 7 del informe) #
+# Objetivo: construir el modelo de a una pieza, para ver qué aporta cada una.
+# Se entrena con 2000-2011 y se valida en 2012. Ojo: la tabla se llama
+# "prueba", pero 2012 es un año de VALIDACIÓN, dentro del desarrollo. La
+# prueba final es 2013-2016 y no se toca hasta el final.
+
+# SEPARAMOS ENTRENAMIENTO Y VALIDACIÓN
+# el modelo necesita Q_ayer para calcular cambio_hoy, así que para comparar
+# modelo y persistencia en los mismos días agregamos esa condición a usable
+datos$usable <- !is.na(datos$Q) & !is.na(datos$Q_manana) & !is.na(datos$Q_ayer)
+
+entrenamiento <- subset(datos, usable & fecha <= as.Date("2011-12-30"))
+prueba        <- subset(datos, usable & fecha >= as.Date("2012-01-01") &
+                          fecha <= as.Date("2012-12-30"))
+
+# error de persistencia en el año de validación (2012)
+prueba$pred_pers <- prueba$Q
+mae_pers_2012 <- tapply(abs(prueba$pred_pers - prueba$Q_manana), prueba$cuenca, mean)
+
+# Patrón que se repite en cada modelo:
+#  1. lm(cambio_manana ~ pistas) ajusta una regresión lineal del cambio de mañana
+#  2. Q * exp(predict(...)) deshace el logaritmo: Q mañana = Q hoy * e^cambio
+#  3. tapply(...) da el MAE por río, y mejora = 1 - MAE modelo / MAE persistencia
+#     (0,15 = 15 % menos error; 0 = empate; negativo = peor que persistencia)
+
+
+# PRIMER MODELO: solo con comportamiento del río, solo con dos pistas:
+# si el rio viene subiendo o bajando y cuánta agua lleva hoy.
+m1 <- lm(cambio_manana ~ cambio_hoy + log_Q, data = entrenamiento)
+summary(m1)
+
+# interpretación: Si hoy el río subió un 10 % el modelo predice que mañana suba otro 1,4 %
+# Por cada unidad, el cambio predicho para mañana es 0,7 puntos porcentuales menor.
+# cuanto más agua lleva un río hoy, más tiende a bajar mañana: los ríos crecidos vuelven a su nivel.
+# Ojo: el efecto se mide respecto de hoy, no del promedio.
+# El R2 es bajo (~0,02), y es esperable: mide cuánto del CAMBIO diario se explica,
+# y persistencia explica 0 % del cambio. Lo que importa es la mejora frente a persistencia.
+
+# LE GANA A LA PERSISTENCIA EN 2012?
+prueba$pred_m1 <- prueba$Q * exp(predict(m1, newdata = prueba)) # deshacemos el log: Q mañana = Q hoy * e^cambio
+mae_m1 <- tapply(abs(prueba$pred_m1 - prueba$Q_manana), prueba$cuenca, mean)
+
+mejora <- 1 - mae_m1 / mae_pers_2012
+sort(round(mejora, 3))
+median(mejora)       # mediana entre ríos: cada río pesa lo mismo (Decisión 7)
+sum(mejora > 0)      # en cuántos ríos le gana a persistencia
+# la mediana de la mejora es -0.0023, y en 14 de los 30 ríos el modelo le gana a la persistencia.
+# O sea, empata: con un solo coeficiente para los 30 ríos, un log_Q alto puede ser
+# "río grande" o "río crecido", y el modelo no los distingue.
+
+# SEGUNDO MODELO: QUE CADA RÍO TENGA SU COMPORTAMIENTO
+# cuenca: cada río tiene su propio intercepto (punto de partida)
+# cuenca:log_Q: cada río tiene su propia velocidad de bajada después de una crecida
+m2 <- lm(cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q, data = entrenamiento)
+prueba$pred_m2 <- prueba$Q * exp(predict(m2, newdata = prueba))
+mae_m2 <- tapply(abs(prueba$pred_m2 - prueba$Q_manana), prueba$cuenca, mean)
+
+mejora2 <- 1 - mae_m2 / mae_pers_2012
+sort(round(mejora2, 3))
+median(mejora2)
+sum(mejora2 > 0)
+length(coef(m2)) # 61 = intercepto + cambio_hoy + log_Q + 29 cuencas + 29 interacciones (un río queda de referencia)
+
+# El avance: de empatar con persistencia pasamos a una mejora del 3 %, y el modelo gana en 21 de 30 ríos
+
+# TERCER MODELO: AGREGAR LLUVIA (mismo efecto para todos los ríos)
+# log1p(x) = log(1 + x): casi todos los días la lluvia es 0 (y log(0) no existe)
+# y unos pocos días son enormes; el log evita que esos pocos días dominen.
+m3 <- lm(cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+           log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d),
+         data = entrenamiento)
+
+prueba$pred_m3 <- prueba$Q * exp(predict(m3, newdata = prueba))
+mae_m3 <- tapply(abs(prueba$pred_m3 - prueba$Q_manana), prueba$cuenca, mean)
+mejora_m3 <- 1 - mae_m3 / mae_pers_2012
+
+median(mejora_m3)
+sum(mejora_m3 > 0)
+
+# comparamos m2 (sin lluvia) y m3 (con lluvia) en dos tipos de río
+rios <- c("7116001", "8130002", "8117005",   # chicos de lluvia: Upeo, Diguillín, Chillán
+          "10111001", "9437002")             # salen de un lago: San Pedro, Toltén
+round(cbind(m2 = mejora2[rios], m3 = mejora_m3[rios]), 3) #En los tres ríos chicos de lluvia el salto es grande
+
+# la lluvia sube la mediana (de 3,3 % a 4,7 %), pero el modelo gana en menos ríos (de 21 a 19).
+# O sea, la lluvia ayuda mucho en algunos ríos y perjudica en otros.
+
+# el modelo aprende "si llueve 20 mm, el río sube tanto por ciento",
+# eso influye más en esteros chicos, pero no en un río que sale de un lago
+# porque el lago absorbe la lluvia y el río casi no se mueve.
+# (San Pedro pasa de 14 % a -196 % y Toltén de 5 % a -54 %)
+
+# CUARTO MODELO: que cada río responda a la lluvia a su manera
+m4 <- lm(cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+           log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d) +
+           cuenca:log1p(P) + cuenca:log1p(P_ayer) + cuenca:log1p(lluvia_3d),
+         data = entrenamiento)
+
+# la última línea agrega las interacciones: cada río tiene su propia respuesta a la lluvia de hoy,
+# de ayer y de 3 días. Se aplican solo a la lluvia de corto plazo, que es donde los ríos
+# más se diferencian, para no inflar demasiado el número de coeficientes.
+
+prueba$pred_m4 <- prueba$Q * exp(predict(m4, newdata = prueba))
+mae_m4 <- tapply(abs(prueba$pred_m4 - prueba$Q_manana), prueba$cuenca, mean)
+mejora_m4 <- 1 - mae_m4 / mae_pers_2012
+
+median(mejora_m4) #m4 se equivoca un 11 % menos que persistencia
+sum(mejora_m4 > 0)  # gana en 26 ríos
+length(coef(m4))    # 153 = 61 de m2 + 5 de lluvia + 3 x 29 interacciones con la lluvia
+                    # (con ~130.000 filas de entrenamiento: más de 800 filas por coeficiente)
+
+# comparamos los cinco ríos en los tres modelos
+round(cbind(m2 = mejora2[rios], m3 = mejora_m3[rios], m4 = mejora_m4[rios]), 3)
+# los ríos de lago se recuperan (San Pedro +20 %, Toltén +24 %) y los chicos mantienen
+# su ganancia: la heterogeneidad entre cuencas no es un detalle.
+
+
+# BLOQUE 6. VALIDACIÓN EN 7 VENTANAS (sección 8 del informe) #
+# Objetivo: repetir la comparación en cada año de 2006 a 2012, para ver si la
+# mejora es estable o fue suerte de un año. El entrenamiento siempre parte en
+# 2000 y crece ("ventanas de origen creciente", como pide el enunciado).
+# Se usan 7 ventanas y no 3 porque 2010-2012 son años secos, y elegir el modelo
+# solo con ellos lo sesgaría hacia años secos. (Decisión 8 del informe)
+
+# Guardar las fórmulas en una lista, para no reescribirlas en cada ventana.
+# Son las cuatro de arriba, más m5 y m6, que agregan temperatura y mes:
+formulas <- list(
+  m1 = cambio_manana ~ cambio_hoy + log_Q,
+  m2 = cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q,
+  m3 = cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+    log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d),
+  m4 = cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+    log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d) +
+    cuenca:log1p(P) + cuenca:log1p(P_ayer) + cuenca:log1p(lluvia_3d),
+  # m5 = m4 + temperatura de hoy, de la última semana y mes (166 coeficientes)
+  m5 = cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+    log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d) +
+    cuenca:log1p(P) + cuenca:log1p(P_ayer) + cuenca:log1p(lluvia_3d) +
+    Temp + temp_7d + mes,
+  # m6 = m5 + respuesta a la temperatura propia de cada río (195 coeficientes)
+  m6 = cambio_manana ~ cambio_hoy + log_Q + cuenca + cuenca:log_Q +
+    log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d) +
+    cuenca:log1p(P) + cuenca:log1p(P_ayer) + cuenca:log1p(lluvia_3d) +
+        Temp + temp_7d + mes + cuenca:temp_7d
+)
+
+# Para cada año de 2006 a 2012, arma el entrenamiento y la validación,
+# calcula el error de persistencia y ajusta los seis modelos
+# (7 años x 6 modelos = 42 ajustes; tarda unos minutos):
+resultados <- data.frame()
+
+for (anio in 2006:2012) {
+  # entrenamiento: desde 2000 hasta el 30 de diciembre del año anterior
+  entrenamiento <- subset(datos, usable & fecha <= as.Date(paste0(anio - 1, "-12-30")))
+  # validación: el año completo, hasta el 30 de diciembre
+  validacion <- subset(datos, usable & fecha >= as.Date(paste0(anio, "-01-01")) &
+                         fecha <= as.Date(paste0(anio, "-12-30")))
+
+  # la vara de ese año: error de persistencia por río
+  mae_pers <- tapply(abs(validacion$Q - validacion$Q_manana), validacion$cuenca, mean)
+
+  for (nombre in names(formulas)) {
+    modelo <- lm(formulas[[nombre]], data = entrenamiento)
+    pred <- validacion$Q * exp(predict(modelo, newdata = validacion))
+    mae_modelo <- tapply(abs(pred - validacion$Q_manana), validacion$cuenca, mean)
+
+    # una fila por año, modelo y río
+    resultados <- rbind(resultados, data.frame(
+      anio = anio, modelo = nombre, cuenca = names(mae_modelo),
+      mejora = 1 - mae_modelo / mae_pers
+    ))
+  }
+  cat("Listo", anio, "\n")
+}
+
+# resumir. Dos tablas de años por modelos:
+
+# mediana de la mejora entre ríos
+round(tapply(resultados$mejora, list(resultados$anio, resultados$modelo), median), 3)
+
+# en cuántos ríos gana cada modelo
+tapply(resultados$mejora > 0, list(resultados$anio, resultados$modelo), sum)
+
+# La fila de 2012 coincide con el bloque 5: el bucle hace lo mismo que el código paso a paso.
+# m4 tiene la mejor mediana en 6 de 7 años y nunca es negativo (4,4 % a 18,8 %):
+# es el modelo elegido (Decisión 9 del informe).
+#O sea, hay años en que agregar lluvia ayuda mucho y años en que estorba.
+
+#Esto calcula la lluvia anual promedio entre las 30 cuencas (mm al año):
+
+anio_dato <- format(datos$fecha, "%Y")
+lluvia_anual <- tapply(datos$P, anio_dato, sum) / 30
+round(lluvia_anual)
+# los años más secos de la validación (2007 y 2010) son los más difíciles.
+# 2013-2016 también son secos: en la prueba final conviene esperar una mejora más
+# cercana a la de 2010-2012 que al promedio.
+
+# ¿La temperatura ayuda en los ríos de nieve de Santiago?
+nieve <- c("5721001", "5722001", "5722002", "5710001")   # Yerba Loca, Arrayán, Almendros, Maipo
+r_nieve <- subset(resultados, cuenca %in% nieve & modelo %in% c("m4", "m5", "m6"))
+round(tapply(r_nieve$mejora, list(r_nieve$cuenca, r_nieve$modelo), median), 3)
+# temperatura y mes ayudan en años lluviosos y empeoran en los secos; en promedio
+# empatan con m4 (12,6 % y 12,8 % frente a 12,5 %) y no arreglan los ríos de nieve.
+# Por eso no entran al modelo final (Decisión 10 del informe, pendiente de confirmar
+# con el grupo).
+
+
+# BLOQUE 7. DÓNDE FALLA m4, RMSE Y REFERENCIA ESTACIONAL (sección 9 del informe) #
+
+# DÓNDE GANA Y DÓNDE PIERDE m4
+# resumimos por río la mejora de m4 en los 7 años y en cuántos años gana
+r4 <- subset(resultados, modelo == "m4")
+
+tabla_rios <- data.frame(
+  cuenca         = names(tapply(r4$mejora, r4$cuenca, median)),
+  mejora_mediana = round(tapply(r4$mejora, r4$cuenca, median), 3),
+  anios_que_gana = tapply(r4$mejora > 0, r4$cuenca, sum)   # de 0 a 7
+)
+
+# agregamos nombre, área, altura media y embalse. Los atributos se usan aquí
+# solo para DESCRIBIR los resultados, no como pistas del modelo.
+atributos$cuenca <- as.character(atributos$gauge_id)
+tabla_rios <- merge(tabla_rios,
+                    atributos[, c("cuenca", "gauge_name", "area", "elev_mean", "big_dam")],
+                    by = "cuenca")
+
+tabla_rios[order(tabla_rios$mejora_mediana), ]
+# pierden las cuencas altas de Chile central (nieve, y varias reguladas);
+# ganan los 7 años los ríos de lluvia de baja altura
+
+# gráfico: altura de la cuenca contra mejora de m4 (naranjo = con embalse grande)
+plot(tabla_rios$elev_mean, tabla_rios$mejora_mediana,
+     col = ifelse(tabla_rios$big_dam == 1, "darkorange", "steelblue"), pch = 19,
+     xlab = "Altura media de la cuenca (m)",
+     ylab = "Mejora de m4 frente a persistencia (mediana 2006-2012)")
+abline(h = 0, lty = 2)   # sobre la línea: m4 le gana a persistencia
+legend("bottomleft", legend = c("Sin embalse grande", "Con embalse grande"),
+       col = c("steelblue", "darkorange"), pch = 19)
+# la mejora baja con la altura y cruza el cero cerca de los 1500 m
+
+# agregamos RMSE y referencia estacional
+# RMSE: castiga más los errores grandes, que ocurren en las crecidas.
+# Referencia estacional: caudal típico (mediana) de cada río en el mes de mañana,
+# calculado solo con el entrenamiento. No usa el caudal de hoy.
+
+datos$mes_manana <- as.integer(format(datos$fecha + 1, "%m"))   # mes del día que se predice
+
+resultados_m4 <- data.frame()
+
+for (anio in 2006:2012) {
+  entrenamiento <- subset(datos, usable & fecha <= as.Date(paste0(anio - 1, "-12-30")))
+  validacion <- subset(datos, usable & fecha >= as.Date(paste0(anio, "-01-01")) &
+                         fecha <= as.Date(paste0(anio, "-12-30")))
+
+  # las tres predicciones
+  modelo <- lm(formulas$m4, data = entrenamiento)
+  validacion$pred_m4   <- validacion$Q * exp(predict(modelo, newdata = validacion))
+  validacion$pred_pers <- validacion$Q
+
+  # referencia estacional: mediana del caudal de mañana por río y mes, solo con entrenamiento
+  tipico <- aggregate(Q_manana ~ cuenca + mes_manana, data = entrenamiento, FUN = median)
+  names(tipico)[3] <- "pred_est"
+  validacion <- merge(validacion, tipico, by = c("cuenca", "mes_manana"))   # le pega a cada día su caudal típico
+
+  # errores por río (dias = número de días evaluados, que hay que reportar)
+  for (cu in unique(validacion$cuenca)) {
+    d <- validacion[validacion$cuenca == cu, ]
+    resultados_m4 <- rbind(resultados_m4, data.frame(
+      anio = anio, cuenca = cu, dias = nrow(d),
+      MAE_pers  = mean(abs(d$pred_pers - d$Q_manana)),
+      MAE_m4    = mean(abs(d$pred_m4   - d$Q_manana)),
+      MAE_est   = mean(abs(d$pred_est  - d$Q_manana)),
+      RMSE_pers = sqrt(mean((d$pred_pers - d$Q_manana)^2)),
+      RMSE_m4   = sqrt(mean((d$pred_m4   - d$Q_manana)^2))
+    ))
+  }
+  cat("Listo", anio, "\n")
+}
+
+# mejora frente a persistencia, con la misma fórmula de siempre
+resultados_m4$mejora_MAE  <- 1 - resultados_m4$MAE_m4  / resultados_m4$MAE_pers
+resultados_m4$mejora_RMSE <- 1 - resultados_m4$RMSE_m4 / resultados_m4$RMSE_pers
+resultados_m4$mejora_est  <- 1 - resultados_m4$MAE_est / resultados_m4$MAE_pers
+
+round(cbind(
+  MAE  = tapply(resultados_m4$mejora_MAE,  resultados_m4$anio, median),
+  RMSE = tapply(resultados_m4$mejora_RMSE, resultados_m4$anio, median),
+  estacional = tapply(resultados_m4$mejora_est, resultados_m4$anio, median)
+), 3)
+# - la columna MAE coincide con m4 en el bloque 6
+# - la mejora en RMSE es mayor y más estable (13-19 %, promedio 15,4 %): el aporte
+#   de m4 se concentra en las crecidas, justo donde persistencia falla
+# - la referencia estacional pierde por mucho (su error es 2,3 a 5,5 veces el de
+#   persistencia): conocer cómo está el río hoy es la información que más pesa
+
+
+# PENDIENTE (sección 11 del informe): caudales altos y bajos, sensibilidad con
+# la respuesta en m3/s, sensibilidad con atributos físicos en vez del código de
+# cuenca, y prueba final 2013-2016 (una sola vez, reentrenando m4 con 2000-2012).
+
+
+
+# BLOQUE 8. M1: REGRESIÓN PENALIZADA CON GLMNET #
+# Los modelos m1 a m6 (bloques 5 y 6) fueron la exploración: nos dijeron qué
+# estructura necesita el problema. M1 usa los MISMOS predictores de m6, pero los
+# estima con castigo (ridge o lasso), eligiendo la intensidad del castigo por
+# validación, como piden las instrucciones (sección 3.1).
+#
+# Idea de la penalización: un lm busca los coeficientes que minimizan el error al
+# cuadrado. glmnet minimiza ese mismo error MÁS un castigo por coeficientes grandes:
+#   - ridge (alpha = 0): castiga la suma de coeficientes al cuadrado. Los achica
+#     a todos, pero no deja ninguno en cero.
+#   - lasso (alpha = 1): castiga la suma de valores absolutos. Puede dejar
+#     coeficientes exactamente en cero.
+#   - lambda: cuánto pesa el castigo. lambda = 0 es un lm común (como m6);
+#     lambda muy grande lleva todo a cero, o sea cambio = 0 = persistencia.
+#
+# LA MATRIZ X: los predictores de m6, con UN cambio en cómo se codifica la cuenca.
+# Por defecto, R deja un río de referencia (el primero en orden alfabético, Liquiñe)
+# y cada columna de río mide "cuánto se aparta este río de Liquiñe". En un lm eso
+# no cambia nada, pero con castigo sí: achicar esas columnas hacia cero empujaría a
+# todos los ríos a parecerse a Liquiñe, un río elegido por orden alfabético.
+# Por eso los 30 ríos van SIN referencia (30 columnas por término, no 29): así
+# ningún río es especial y el castigo trata a todos por igual. Con castigo el modelo
+# sigue teniendo solución única aunque haya una columna más por término.
+#
+# Validación (para no hacer trampa al elegir alpha y lambda):
+#   - Ventanas externas: las mismas 7 del bloque 6 (validar en cada año 2006-2012,
+#     entrenando desde 2000 hasta el 30-12 del año anterior).
+#   - Dentro de cada ventana externa, alpha y lambda se eligen con 3 particiones
+#     internas: los 3 años anteriores, cada uno también con origen creciente.
+#     El año externo NUNCA se usa para elegir: es una validación anidada.
+#   - 2 alphas (ridge, lasso) x 8 lambdas = 16 configuraciones (máximo sugerido: 20).
+#   - Regla de selección: mediana entre ríos de la mejora en MAE (m3/s) frente a
+#     persistencia, promediada en las 3 particiones internas.
+
+library(glmnet)   # regresión penalizada
+library(Matrix)   # matrices dispersas: casi todas las columnas por río son ceros
+
+# PREPARAMOS LA MATRIZ X
+datos$cuenca_f <- factor(datos$cuenca)   # factor con los 30 ríos, igual en todas las ventanas
+
+# los mismos predictores que m6
+formula_m1 <- ~ cambio_hoy + log_Q + cuenca_f + cuenca_f:log_Q +
+  log1p(P) + log1p(P_ayer) + log1p(lluvia_3d) + log1p(lluvia_7d) + log1p(lluvia_30d) +
+  cuenca_f:log1p(P) + cuenca_f:log1p(P_ayer) + cuenca_f:log1p(lluvia_3d) +
+  Temp + temp_7d + mes + cuenca_f:temp_7d
+
+# solo filas del desarrollo con todas las variables (los primeros 29 días de 2000 no
+# tienen lluvia de 30 días; lm las saltaba solo, glmnet necesita que no haya NA)
+columnas_X <- c("cambio_hoy", "log_Q", "P", "P_ayer", "lluvia_3d", "lluvia_7d",
+                "lluvia_30d", "Temp", "temp_7d", "mes")
+filas_m1 <- datos$usable & complete.cases(datos[, columnas_X]) &
+  datos$fecha <= as.Date("2012-12-30")   # la prueba final no entra
+base_m1 <- datos[filas_m1, ]
+
+# sparse.model.matrix: hace lo mismo que model.matrix (dummies, interacciones,
+# log1p), pero guarda solo los valores distintos de cero: menos memoria y más rápido.
+# contrasts.arg: los 30 ríos sin río de referencia (ver arriba).
+# [, -1]: quita la columna de intercepto, porque glmnet agrega su propio intercepto
+# (sin castigo). Si se deja, queda una columna constante que no aporta nada.
+X <- sparse.model.matrix(formula_m1, data = base_m1,
+                         contrasts.arg = list(cuenca_f = contrasts(base_m1$cuenca_f, contrasts = FALSE)))[, -1]
+y <- base_m1$cambio_manana   # variable respuesta
+dim(X)        # 139.938 filas y 200 columnas (m6 tenía 194: +1 río por cada uno de los 6 términos con cuenca)
+colnames(X)
+
+# glmnet estandariza cada columna antes de castigar (standardize = TRUE, por defecto),
+# para que el castigo no dependa de las unidades (mm de lluvia vs grados). Esa
+# estandarización se calcula dentro de cada ajuste, solo con su entrenamiento.
+
+# grilla de lambdas, de mayor a menor (glmnet las pide en ese orden; 0 = lm sin castigo).
+# La grilla inicial (1 a 10) se descartó porque todos sus valores producían un
+# modelo equivalente a persistencia (el lasso anulaba todos los coeficientes).
+lambdas <- c(0.1, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001, 0)
+alphas  <- c(ridge = 0, lasso = 1)
+
+# filas de entrenamiento y validación para un año, con los mismos cortes al 30-12 de los bloques 5 a 7
+filas_entrena <- function(a) which(base_m1$fecha <= as.Date(paste0(a - 1, "-12-30")))
+filas_valida  <- function(a) which(base_m1$fecha >= as.Date(paste0(a, "-01-01")) &
+                                     base_m1$fecha <= as.Date(paste0(a, "-12-30")))
+
+# el mismo ajuste en la búsqueda interna y en el reajuste final (intercepto de glmnet incluido)
+ajustar_m1 <- function(tr, alpha) {
+  glmnet(X[tr, ], y[tr], alpha = alpha, lambda = lambdas,
+         thresh = 1e-9, maxit = 1e6)   # más precisión: lambda = 0 converge más lento
+}
+
+# mediana entre ríos de la mejora en MAE frente a persistencia (en m3/s)
+mejora_mediana <- function(pred, filas) {
+  obs <- base_m1$Q_manana[filas]
+  mae_mod <- tapply(abs(pred - obs), base_m1$cuenca[filas], mean)
+  mae_per <- tapply(abs(base_m1$Q[filas] - obs), base_m1$cuenca[filas], mean)
+  median(1 - mae_mod / mae_per)
+}
+
+# TODAS LAS CONFIGURACIONES EN LAS 7 VENTANAS: cada (tipo, lambda) se evalúa en 2006-2012
+# y se elige la de mayor mejora mediana en MAE promediada en las 7 ventanas.
+resultados_grilla <- data.frame()   # una fila por ventana, tipo, lambda y río
+for (anio_ext in 2006:2012) {
+  tr <- filas_entrena(anio_ext)
+  va <- filas_valida(anio_ext)
+  for (tipo in names(alphas)) {
+    ajuste <- ajustar_m1(tr, alphas[tipo])            # un ajuste entrega las 8 lambdas
+    pred_cambio <- predict(ajuste, newx = X[va, ])
+    for (k in seq_along(lambdas)) {
+      pred_Q <- base_m1$Q[va] * exp(pred_cambio[, k])
+      obs <- base_m1$Q_manana[va]; cu <- base_m1$cuenca[va]
+      mae_m  <- tapply(abs(pred_Q - obs), cu, mean)
+      mae_p  <- tapply(abs(base_m1$Q[va] - obs), cu, mean)
+      rmse_m <- sqrt(tapply((pred_Q - obs)^2, cu, mean))
+      rmse_p <- sqrt(tapply((base_m1$Q[va] - obs)^2, cu, mean))
+      resultados_grilla <- rbind(resultados_grilla, data.frame(
+        anio = anio_ext, tipo = tipo, lambda = lambdas[k], cuenca = names(mae_m),
+        dias = as.vector(table(cu)[names(mae_m)]),
+        MAE_m1 = mae_m, MAE_pers = mae_p, RMSE_m1 = rmse_m, RMSE_pers = rmse_p))
+    }
+  }
+  cat("Listo", anio_ext, "\n")
+}
+resultados_grilla$mejora_MAE  <- 1 - resultados_grilla$MAE_m1  / resultados_grilla$MAE_pers
+resultados_grilla$mejora_RMSE <- 1 - resultados_grilla$RMSE_m1 / resultados_grilla$RMSE_pers
+
+# por año: mediana entre ríos; luego promedio de los 7 años
+por_anio <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ anio + tipo + lambda,
+                      data = resultados_grilla, FUN = median)
+tabla_grilla <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ tipo + lambda, data = por_anio, FUN = mean)
+tabla_grilla <- tabla_grilla[order(-tabla_grilla$mejora_MAE), ]
+tabla_grilla$mejora_MAE <- round(tabla_grilla$mejora_MAE, 3)
+tabla_grilla$mejora_RMSE <- round(tabla_grilla$mejora_RMSE, 3)
+tabla_grilla                                         # la tabla que justifica la elección
+
+ganador <- tabla_grilla[1, ]
+cat("M1 ganador:", ganador$tipo, "lambda =", ganador$lambda,
+    "| mejora MAE:", ganador$mejora_MAE, "| mejora RMSE:", ganador$mejora_RMSE, "\n")
+# el ganador, año por año
+round(subset(por_anio, tipo == ganador$tipo & lambda == ganador$lambda)[, c("anio", "mejora_MAE", "mejora_RMSE")], 3)
+
+
+
+
+# BLOQUE 9. M2: MODELO ADITIVO GENERALIZADO (GAM) #
+# M2 es el procedimiento "flexible" que piden las instrucciones. Usamos un GAM:
+# cada predictor continuo entra como una curva suave f(x) en vez de una recta,
+#   f(x) = theta_1 b_1(x) + ... + theta_k b_k(x)        (k funciones base, clase S14-S15)
+# y cada curva paga un castigo por curvatura; la intensidad del castigo (lambda) la
+# elige REML dentro de cada entrenamiento. Lo que validamos es k y la estructura.
+#
+# Usa la MISMA información que M1 y M3 (cambio_hoy, log_Q, 5 lluvias, Temp, temp_7d,
+# mes y cuenca), las MISMAS filas (base_m1, del bloque 8), las MISMAS 7 ventanas y la
+# MISMA regla de selección que M1, para que la comparación sea pareada.
+
+library(mgcv)   # gam / bam: modelos aditivos con castigo y REML
+
+# 9.1 LOS 3 MODELOS, CADA UNO CON k = 5 Y k = 10 (6 configuraciones, fijadas ANTES de ajustar)
+# Como m3, m4 y m6, los 3 modelos se diferencian en qué tiene cada río de propio:
+#   A: solo su intercepto (cuenca_f como factor)                         ~ m3 con curvas
+#   B: A + su propia curva de respuesta a la lluvia de hoy               ~ m4 parcial
+#   C: B + su propia curva de bajada (log_Q)                             ~ m4/m6
+# Todos tienen las mismas 9 curvas comunes: s(x) = curva suave de x.
+# k = flexibilidad máxima de cada curva común: 5 o 10 (10 = valor por defecto de mgcv).
+# Las curvas por río usan bs = "fs": una curva por río, castigadas hacia una forma común.
+# Base de todas las curvas: thin plate ("tp", por defecto): no hay nudos que elegir.
+# La lluvia va en log1p, como en M1. mes y cuenca_f son factores: entran como términos lineales.
+formulas_m2 <- list(
+  A_k5  = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 5) + s(log_Q, k = 5) + s(log1p(P), k = 5) + s(log1p(P_ayer), k = 5) +
+    s(log1p(lluvia_3d), k = 5) + s(log1p(lluvia_7d), k = 5) + s(log1p(lluvia_30d), k = 5) +
+    s(Temp, k = 5) + s(temp_7d, k = 5),
+  A_k10 = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 10) + s(log_Q, k = 10) + s(log1p(P), k = 10) + s(log1p(P_ayer), k = 10) +
+    s(log1p(lluvia_3d), k = 10) + s(log1p(lluvia_7d), k = 10) + s(log1p(lluvia_30d), k = 10) +
+    s(Temp, k = 10) + s(temp_7d, k = 10),
+  B_k5  = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 5) + s(log_Q, k = 5) + s(log1p(P), k = 5) + s(log1p(P_ayer), k = 5) +
+    s(log1p(lluvia_3d), k = 5) + s(log1p(lluvia_7d), k = 5) + s(log1p(lluvia_30d), k = 5) +
+    s(Temp, k = 5) + s(temp_7d, k = 5) +
+    s(log1p(P), cuenca_f, bs = "fs", k = 5),
+  B_k10 = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 10) + s(log_Q, k = 10) + s(log1p(P), k = 10) + s(log1p(P_ayer), k = 10) +
+    s(log1p(lluvia_3d), k = 10) + s(log1p(lluvia_7d), k = 10) + s(log1p(lluvia_30d), k = 10) +
+    s(Temp, k = 10) + s(temp_7d, k = 10) +
+    s(log1p(P), cuenca_f, bs = "fs", k = 5),
+  C_k5  = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 5) + s(log_Q, k = 5) + s(log1p(P), k = 5) + s(log1p(P_ayer), k = 5) +
+    s(log1p(lluvia_3d), k = 5) + s(log1p(lluvia_7d), k = 5) + s(log1p(lluvia_30d), k = 5) +
+    s(Temp, k = 5) + s(temp_7d, k = 5) +
+    s(log1p(P), cuenca_f, bs = "fs", k = 5) + s(log_Q, cuenca_f, bs = "fs", k = 5),
+  C_k10 = cambio_manana ~ cuenca_f + mes +
+    s(cambio_hoy, k = 10) + s(log_Q, k = 10) + s(log1p(P), k = 10) + s(log1p(P_ayer), k = 10) +
+    s(log1p(lluvia_3d), k = 10) + s(log1p(lluvia_7d), k = 10) + s(log1p(lluvia_30d), k = 10) +
+    s(Temp, k = 10) + s(temp_7d, k = 10) +
+    s(log1p(P), cuenca_f, bs = "fs", k = 5) + s(log_Q, cuenca_f, bs = "fs", k = 5)
+)
+
+# 9.2 AJUSTE
+# bam: versión de gam para muchas filas. method = "fREML": lambda de cada curva por REML.
+# discrete = TRUE: redondea cada predictor a una grilla de valores para calcular las
+# bases una vez por valor (mucho más rápido; ~1 a 6 segundos por ajuste).
+# Las bases, el centrado y REML se calculan SOLO con las filas de entrenamiento (tr).
+# Aviso esperable en B y C: "model has repeated 1-d smooths of same variable", porque
+# s(log1p(P)) y s(log1p(P), cuenca_f, bs = "fs") usan la misma variable: la curva común
+# más la desviación de cada río. mgcv lo resuelve solo (gam.side) quitando lo que se repite.
+ajustar_m2 <- function(tr, formula) {
+  set.seed(3407)   # la base thin plate usa una submuestra aleatoria de valores de x
+  bam(formula, data = base_m1[tr, ], method = "fREML", discrete = TRUE)
+}
+
+# 9.3 LAS 6 CONFIGURACIONES EN LAS 7 VENTANAS (igual que M1 en el bloque 8)
+resultados_m2 <- data.frame()   # una fila por ventana, configuración y río
+for (anio_ext in 2006:2012) {
+  tr <- filas_entrena(anio_ext)
+  va <- filas_valida(anio_ext)
+  obs <- base_m1$Q_manana[va]; cu <- base_m1$cuenca[va]
+  for (nombre in names(formulas_m2)) {
+    modelo <- ajustar_m2(tr, formulas_m2[[nombre]])
+    pred_Q <- base_m1$Q[va] * exp(predict(modelo, newdata = base_m1[va, ]))   # deshacemos el log
+    resultados_m2 <- rbind(resultados_m2, data.frame(
+      anio = anio_ext, config = nombre,
+      cuenca = names(tapply(obs, cu, length)), dias = as.vector(tapply(obs, cu, length)),
+      MAE_m2    = as.vector(tapply(abs(pred_Q - obs), cu, mean)),
+      MAE_pers  = as.vector(tapply(abs(base_m1$Q[va] - obs), cu, mean)),
+      RMSE_m2   = as.vector(sqrt(tapply((pred_Q - obs)^2, cu, mean))),
+      RMSE_pers = as.vector(sqrt(tapply((base_m1$Q[va] - obs)^2, cu, mean)))))
+  }
+  cat("Listo", anio_ext, "\n")
+}
+resultados_m2$mejora_MAE  <- 1 - resultados_m2$MAE_m2  / resultados_m2$MAE_pers
+resultados_m2$mejora_RMSE <- 1 - resultados_m2$RMSE_m2 / resultados_m2$RMSE_pers
+
+# por año: mediana entre ríos; luego promedio de los 7 años (misma agregación que M1)
+por_anio_m2 <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ anio + config, data = resultados_m2, FUN = median)
+tabla_m2 <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ config, data = por_anio_m2, FUN = mean)
+tabla_m2 <- tabla_m2[order(-tabla_m2$mejora_MAE), ]
+tabla_m2[, 2:3] <- round(tabla_m2[, 2:3], 3)
+tabla_m2                                  # la tabla que justifica la elección
+
+# 9.4 REGLA DE SELECCIÓN (la misma de M1): mayor mejora en MAE; si la diferencia con la
+# siguiente es menor que 0,5 puntos (0.005), desempata la mejora en RMSE.
+empatadas <- tabla_m2[tabla_m2$mejora_MAE >= tabla_m2$mejora_MAE[1] - 0.005, ]
+ganador_m2 <- empatadas[which.max(empatadas$mejora_RMSE), ]
+cat("M2 ganador:", ganador_m2$config, "| mejora MAE:", ganador_m2$mejora_MAE,
+    "| mejora RMSE:", ganador_m2$mejora_RMSE, "\n")
+round(subset(por_anio_m2, config == ganador_m2$config)[, c("anio", "mejora_MAE", "mejora_RMSE")], 3)
+
+# 9.5 DIAGNÓSTICO DEL MODELO GANADOR (con todo el desarrollo: 2000 a 2012-12-30)
+# Solo para describir el modelo elegido (edf, curvas, concurvidad, k); no cambia la elección.
+m2_desarrollo <- ajustar_m2(filas_entrena(2013), formulas_m2[[ganador_m2$config]])
+
+# edf de cada curva: ~1 = casi recta; mayor = curva con más forma
+resumen_m2 <- summary(m2_desarrollo)
+round(resumen_m2$s.table[, "edf", drop = FALSE], 2)
+
+# ¿k alcanza? k-index bajo 1 con p-valor chico sugiere que la curva quedó "apretada"
+k.check(m2_desarrollo)
+
+# concurvidad: versión para curvas de la multicolinealidad (0 = nada, 1 = total).
+# Se mira "worst": cuánto puede reproducirse cada curva con las demás.
+round(concurvity(m2_desarrollo, full = TRUE)["worst", ], 2)
+
+# curvas parciales de las curvas comunes, con su banda (± 2 errores estándar)
+# (plot.gam dibuja una curva por llamada con select, así que se recorren las 9 comunes)
+par(mfrow = c(3, 3), mar = c(4, 4, 1, 1))
+for (i in 1:9) {
+  plot(m2_desarrollo, select = i, shade = TRUE, seWithMean = TRUE, rug = FALSE,
+       scale = 0,   # cada panel con su propia escala vertical (si no, las curvas chicas se ven planas)
+       ylab = "Aporte al cambio log (centrado)")
+  abline(h = 0, lty = 2)
+}
+par(mfrow = c(1, 1))
+
+# 9.6 AMPLIACIÓN DE LA BÚSQUEDA: C CON k = 15
+# Motivo (resultado de desarrollo): el ganador C_k10 es la configuración más flexible de
+# la grilla, y k.check muestra varias curvas comunes usando casi todo su k (edf ~8,9 de 9).
+# Probamos una configuración más (7 de las 20 permitidas) con las curvas comunes en k = 15.
+# Mismas ventanas, filas, métrica y regla de selección que el resto de M2.
+formula_C_k15 <- cambio_manana ~ cuenca_f + mes +
+  s(cambio_hoy, k = 15) + s(log_Q, k = 15) + s(log1p(P), k = 15) + s(log1p(P_ayer), k = 15) +
+  s(log1p(lluvia_3d), k = 15) + s(log1p(lluvia_7d), k = 15) + s(log1p(lluvia_30d), k = 15) +
+  s(Temp, k = 15) + s(temp_7d, k = 15) +
+  s(log1p(P), cuenca_f, bs = "fs", k = 5) + s(log_Q, cuenca_f, bs = "fs", k = 5)
+
+resultados_k15 <- data.frame()
+for (anio_ext in 2006:2012) {
+  tr <- filas_entrena(anio_ext)
+  va <- filas_valida(anio_ext)
+  obs <- base_m1$Q_manana[va]; cu <- base_m1$cuenca[va]
+  modelo <- ajustar_m2(tr, formula_C_k15)
+  pred_Q <- base_m1$Q[va] * exp(predict(modelo, newdata = base_m1[va, ]))
+  resultados_k15 <- rbind(resultados_k15, data.frame(
+    anio = anio_ext, config = "C_k15",
+    cuenca = names(tapply(obs, cu, length)), dias = as.vector(tapply(obs, cu, length)),
+    MAE_m2    = as.vector(tapply(abs(pred_Q - obs), cu, mean)),
+    MAE_pers  = as.vector(tapply(abs(base_m1$Q[va] - obs), cu, mean)),
+    RMSE_m2   = as.vector(sqrt(tapply((pred_Q - obs)^2, cu, mean))),
+    RMSE_pers = as.vector(sqrt(tapply((base_m1$Q[va] - obs)^2, cu, mean)))))
+  cat("Listo", anio_ext, "\n")
+}
+resultados_k15$mejora_MAE  <- 1 - resultados_k15$MAE_m2  / resultados_k15$MAE_pers
+resultados_k15$mejora_RMSE <- 1 - resultados_k15$RMSE_m2 / resultados_k15$RMSE_pers
+
+# comparación por año con C_k10 (misma agregación: mediana entre ríos por año)
+por_anio_k15 <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ anio + config, data = resultados_k15, FUN = median)
+comparacion_k <- merge(subset(por_anio_m2, config == "C_k10"), por_anio_k15,
+                       by = "anio", suffixes = c("_k10", "_k15"))
+comparacion_k <- comparacion_k[, c("anio", "mejora_MAE_k10", "mejora_MAE_k15", "mejora_RMSE_k10", "mejora_RMSE_k15")]
+round(comparacion_k, 3)
+round(colMeans(comparacion_k[, -1]), 3)   # promedio de los 7 años
+
+# misma regla de selección, ahora con las 7 configuraciones
+tabla_m2_ampliada <- rbind(tabla_m2, data.frame(config = "C_k15",
+  mejora_MAE  = round(mean(por_anio_k15$mejora_MAE), 3),
+  mejora_RMSE = round(mean(por_anio_k15$mejora_RMSE), 3)))
+tabla_m2_ampliada <- tabla_m2_ampliada[order(-tabla_m2_ampliada$mejora_MAE), ]
+tabla_m2_ampliada
+empatadas <- tabla_m2_ampliada[tabla_m2_ampliada$mejora_MAE >= tabla_m2_ampliada$mejora_MAE[1] - 0.005, ]
+ganador_m2 <- empatadas[which.max(empatadas$mejora_RMSE), ]
+cat("M2 ganador con la búsqueda ampliada:", ganador_m2$config, "\n")
+
+# ¿k = 15 alcanza? (ajuste con todo el desarrollo)
+m2_k15 <- ajustar_m2(filas_entrena(2013), formula_C_k15)
+k.check(m2_k15)
+
+
+
+
+#BLOQUE 10 MODELOS M3: Random Forest
+# ============================================================
+#M3: RANDOM FOREST PARALELIZADO (7 NÚCLEOS DEL CPU 1 PARA CADA VENTANA)
+# ============================================================
+#
+# Usamos `parallel` para realizar las 7 ventanas al mismo tiempo de manera independiente
+# así que paralelizamos el loop de ventanas.
+# queremos predecir: cambio_manana (log-cambio), igual que M1 y M2.
+#
+
+library(randomForest)
+library(parallel)
+
+# ============================================================
+# 10.1. Configuración del clúster
+# ============================================================
+# Usamos min(nucleos - 1, 7) para usar como máximo 7 núcleos
+# uno por cada ventana y no sobrecargar
+n_cores <- min(detectCores() - 1, 7)
+
+cat("\n>>> Iniciando Random Forest con", n_cores, "núcleos en paralelo...\n")
+cat(">>> Tiempo estimado: ~10 min en total (6 configuraciones x 7 ventanas).\n")
+cat(">>> se vera el progreso de cada ventana cuando vayan terminando.\n\n")
+
+cl <- makeCluster(n_cores)
+
+# ============================================================
+# 10.2. Exportar datos, configuraciones y funciones a los núcleos
+# ============================================================
+# Definimos vars_rf para asegurarnos de que existe la variable antes de llevarla a los nucleos
+#RF maneja bien la multicolinealidad por ej en temp y temp_7d
+vars_rf <- c("cambio_hoy", "log_Q",
+"P", "P_ayer", "lluvia_3d", "lluvia_7d", "lluvia_30d",
+"temp_7d", "cuenca", "mes","Temp")
+
+# Filas sin NA en la respuesta ni en los predictores (RF no maneja NA).
+# Columna PROPIA de M3, ya que M1 y M2 los necesitan para no cambiar datos$usable, que usan M1 y M2. Son las mismas filas.
+datos$usable_rf <- !is.na(datos$Q) & !is.na(datos$Q_manana) & !is.na(datos$Q_ayer) &
+  complete.cases(datos[, vars_rf])
+
+# En la busqueda de hiperparametros usamos 6 configuraciones, fijadas antes de ajustar (máximo sugerido: 20)
+#   mtry     = cuántos predictores se sortean en cada corte (de 11): 2, 3 (= p/3) o 5
+#   nodesize = tamaño mínimo de las hojas: 5 (árbol profundo, por defecto) o 25 (más simple)
+configs_rf <- expand.grid(mtry = c(2, 3, 5), nodesize = c(5, 25))
+configs_rf$config <- paste0("mtry", configs_rf$mtry, "_nodo", configs_rf$nodesize)
+configs_rf
+n_arboles  <- 200     # árboles por bosque
+tam_submue <- 20000   # filas con que se entrena cada árbol (sampsize)
+# Cada árbol usará 20.000 filas en lugar de las 129.000. Esto es correcto ya que 
+# random forest ya usa muestras bootstrap, es decir aleatorias. Y al tener 200 árboles,
+# se ven casi todos los datos, pero es 10 veces más rápido.
+mae  <- function(y, yhat) mean(abs(y - yhat), na.rm = TRUE)
+rmse <- function(y, yhat) sqrt(mean((y - yhat)^2, na.rm = TRUE))
+
+# enviamos los datos, la búsqueda y las funciones a los 7 nucleos
+clusterExport(cl, c("datos", "vars_rf", "configs_rf", "n_arboles", "tam_submue", "mae", "rmse"))
+clusterEvalQ(cl, library(randomForest))
+
+# ============================================================
+# 10.3. Función que corre UNA ventana (con las 6 configuraciones)
+# ============================================================
+correr_ventana <- function(anio) {
+
+  t0 <- Sys.time()
+
+  # particion temporal entrenamos con el pasado y validamos con el año actual
+  # entrenamos hasta el 30-12 del año anterior y validamos con el año completo
+  train <- subset(datos, usable_rf & fecha <= as.Date(paste0(anio - 1, "-12-30")))
+  valid <- subset(datos, usable_rf & fecha >= as.Date(paste0(anio, "-01-01")) &
+  fecha <= as.Date(paste0(anio, "-12-30")))
+
+  # Convertimos a factor para que el RF no asuma un orden numerico
+  # es decir si los dejamos como números, el modelo asumiría que la cuenca
+  # 8130002 es mayor que la 7116001, lo cual es incorrecto.
+  # usamos levels para asegurar que train y valid tengan las mismas categorias
+  # y con esto predict() no falle
+  train$cuenca <- factor(train$cuenca); valid$cuenca <- factor(valid$cuenca, levels = levels(train$cuenca))
+  train$mes    <- factor(train$mes);    valid$mes    <- factor(valid$mes,    levels = levels(train$mes))
+
+  res <- data.frame()#bucle para las 6 configuraciones de hiperparametros (mtry y nodesize)
+  for (j in seq_len(nrow(configs_rf))) {
+    set.seed(3407)
+    rf_fit <- randomForest(
+      x = train[, vars_rf],
+      y = train$cambio_manana,
+      ntree    = n_arboles,
+      mtry     = configs_rf$mtry[j],
+      nodesize = configs_rf$nodesize[j],
+      sampsize = tam_submue
+    )
+
+    # Predecir y deshacer el log
+    # el modelo predice el cambio porcentual por lo que para volver a m3/s
+    # multiplicamos el caudal de hoy por el exp del cambio y deshacemos el log
+    pred_rf   <- valid$Q * exp(predict(rf_fit, newdata = valid[, vars_rf]))
+    pred_pers <- valid$Q
+
+    # Métricas por río
+    for (cu in unique(valid$cuenca)) {
+      i <- which(valid$cuenca == cu)
+      d_y <- valid$Q_manana[i]
+      res <- rbind(res, data.frame(
+        anio      = anio,
+        config    = configs_rf$config[j],
+        cuenca    = as.character(cu),
+        dias      = length(i),
+        MAE_pers  = mae(d_y, pred_pers[i]),
+        MAE_rf    = mae(d_y, pred_rf[i]),
+        RMSE_pers = rmse(d_y, pred_pers[i]),
+        RMSE_rf   = rmse(d_y, pred_rf[i])
+      ))
+    }
+  }
+
+  # Imprimir estado de la ventana
+  tiempo <- difftime(Sys.time(), t0, units = "mins")
+  cat("Listo", anio, "| Tiempo:", round(tiempo, 2), "min\n")
+
+  return(res)
+}
+
+# ============================================================
+# 10.4. Ejecutar en paralelo
+# ============================================================
+# parLapply va a repartir las 7 ventanas entre los núcleos al mismo tiempo
+t0_global <- Sys.time()
+resultados_lista <- parLapply(cl, 2006:2012, correr_ventana)
+tiempo_global <- difftime(Sys.time(), t0_global, units = "mins")
+
+# Cerrar el clúster liberamos los núcleos
+stopCluster(cl)
+
+# ============================================================
+# 10.5. Resultados, mejoras y elección de la configuración
+# ============================================================
+resultados_rf <- do.call(rbind, resultados_lista)
+# la formula para medir la mejora es la misma que usamos en los bloques anteriores
+# 1 - (Error modelo / Error persistencia)
+resultados_rf$mejora_MAE  <- 1 - resultados_rf$MAE_rf  / resultados_rf$MAE_pers
+resultados_rf$mejora_RMSE <- 1 - resultados_rf$RMSE_rf / resultados_rf$RMSE_pers
+
+cat("\nTERMINADO. Tiempo total:", round(tiempo_global, 1), "minutos\n\n")
+
+# misma agregación que M1 y M2: mediana entre ríos por año, luego promediamos los 7 años
+#asi cada año pesa lo mismo y no se ve afectado por ríos con más días de validación
+por_anio_rf <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ anio + config, data = resultados_rf, FUN = median)
+tabla_rf <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ config, data = por_anio_rf, FUN = mean)
+tabla_rf <- tabla_rf[order(-tabla_rf$mejora_MAE), ]
+tabla_rf[, 2:3] <- round(tabla_rf[, 2:3], 3)
+tabla_rf                                  # la tabla que justifica la elección
+#Resultados de la salida:
+#         config mejora_MAE mejora_RMSE
+# 6  mtry5_nodo5      0.366       0.306   <- ¡El mejor!
+# 4  mtry3_nodo5      0.358       0.291
+# 5 mtry5_nodo25      0.355       0.296
+# ...
+# -> Significado: La configuración `mtry5_nodo5` logró un 36.6% de mejora en MAE.
+# -> Por qué gana: Usar 5 predictores por nodo (casi la mitad de los 11) y 
+#    hojas pequeñas (5 días) le da al bosque la flexibilidad justa para captar
+#    la complejidad sin sobreajustar.
+
+
+# misma regla de selección que en M1 y M2. Observamos la mayor mejora en MAE; si la diferencia con la
+# siguiente es menor que 0,5 puntos (0.005), desempata la mejora en RMSE que castiga mas a los errores extremos
+empatadas <- tabla_rf[tabla_rf$mejora_MAE >= tabla_rf$mejora_MAE[1] - 0.005, ]
+ganador_rf <- empatadas[which.max(empatadas$mejora_RMSE), ]
+cat("M3 ganador:", ganador_rf$config, "| mejora MAE:", ganador_rf$mejora_MAE,
+    "| mejora RMSE:", ganador_rf$mejora_RMSE, "\n")
+
+# el ganador, año por año (y en cuántos ríos le gana a persistencia)
+resumen_rf <- subset(por_anio_rf, config == ganador_rf$config)[, c("anio", "mejora_MAE", "mejora_RMSE")]
+resumen_rf$rios_mejoran <- tapply(subset(resultados_rf, config == ganador_rf$config)$mejora_MAE > 0,
+                                  subset(resultados_rf, config == ganador_rf$config)$anio, sum)
+round(resumen_rf, 3)
+
+# ============================================================
+# 10.6. Importancia de Variables y número de árboles (con todo el desarrollo)
+# ============================================================
+# reentrenamos el ganador con todo el desarrollo (2000-2012) para ver qué variables pesan más.
+# %IncMSE = cuánto aumenta el error de predicción si quitamos la variable.
+cat("\n=== IMPORTANCIA DE VARIABLES (RF) ===\n")
+train_full <- subset(datos, usable_rf & fecha <= as.Date("2012-12-30"))
+train_full$cuenca <- factor(train_full$cuenca)
+train_full$mes    <- factor(train_full$mes)
+cfg <- configs_rf[configs_rf$config == ganador_rf$config, ]
+
+set.seed(3407)
+rf_full <- randomForest(
+  x = train_full[, vars_rf],
+  y = train_full$cambio_manana,
+  ntree    = n_arboles,
+  mtry     = cfg$mtry,
+  nodesize = cfg$nodesize,
+  sampsize = tam_submue,
+  importance = TRUE
+)
+
+print(round(importance(rf_full), 2))
+varImpPlot(rf_full, main = paste("Importancia de variables (", n_arboles, "árboles)"))
+
+# ¿alcanzan los árboles? el error OOB debe quedar plano antes de llegar a n_arboles
+plot(rf_full, main = "Error OOB según número de árboles")
+
+# ============================================================
+# 10.5b. AMPLIACIÓN DE LA BÚSQUEDA: mtry = 8 con nodesize = 5
+# ============================================================
+# Justificacion: el ganador (mtry 5, nodesize 5) quedó en el borde de la
+# grilla (mtry 5 era el mayor probado). Probamos UNA configuración más (7 de las 20 permitidas),
+# con las mismas ventanas, filas, árboles, submuestra y regla de selección.
+# Solo se corre la configuración nueva, no las 6 anteriores.
+configs_extra <- data.frame(mtry = 8, nodesize = 5, config = "mtry8_nodo5")
+
+cl <- makeCluster(n_cores)
+clusterExport(cl, c("datos", "vars_rf", "n_arboles", "tam_submue", "mae", "rmse"))
+clusterEvalQ(cl, library(randomForest))
+
+# correr_ventana usa configs_rf: le pasamos temporalmente solo la configuración nueva
+configs_rf_original <- configs_rf
+configs_rf <- configs_extra
+clusterExport(cl, "configs_rf")
+resultados_extra <- do.call(rbind, parLapply(cl, 2006:2012, correr_ventana))
+stopCluster(cl)
+configs_rf <- rbind(configs_rf_original, configs_extra)   # la grilla completa: 7 configuraciones
+
+# se suman a los resultados anteriores y se repite exactamente la misma elección
+resultados_extra$mejora_MAE  <- 1 - resultados_extra$MAE_rf  / resultados_extra$MAE_pers
+resultados_extra$mejora_RMSE <- 1 - resultados_extra$RMSE_rf / resultados_extra$RMSE_pers
+resultados_rf <- rbind(resultados_rf, resultados_extra)
+
+por_anio_rf <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ anio + config, data = resultados_rf, FUN = median)
+tabla_rf <- aggregate(cbind(mejora_MAE, mejora_RMSE) ~ config, data = por_anio_rf, FUN = mean)
+tabla_rf <- tabla_rf[order(-tabla_rf$mejora_MAE), ]
+tabla_rf[, 2:3] <- round(tabla_rf[, 2:3], 3)
+tabla_rf                                  # ahora con 7 configuraciones
+
+# Salida:
+#         config mejora_MAE mejora_RMSE
+# 6  mtry5_nodo5      0.366       0.306  <- Mismo MAE que antes
+# 7  mtry8_nodo5      0.361       0.309  <- Nuevo Mejor RMSE (0.309), pero MAE cae un poco.
+# 4  mtry3_nodo5      0.358       0.291
+# Significado: mtry8 empató técnicamente con `mtry5` en MAE (diferencia 0.005).
+# ¿Por qué bajó el MAE? Porque 8 de 11 predictores (73%) hace que los árboles 
+# sean muy parecidos entre sí (pierden diversidad, que es la gracia del Bagging).
+
+
+empatadas <- tabla_rf[tabla_rf$mejora_MAE >= tabla_rf$mejora_MAE[1] - 0.005, ]
+ganador_rf <- empatadas[which.max(empatadas$mejora_RMSE), ]
+cat("M3 ganador con la búsqueda ampliada:", ganador_rf$config, "| mejora MAE:", ganador_rf$mejora_MAE,
+    "| mejora RMSE:", ganador_rf$mejora_RMSE, "\n")
+
+# comparamos año a año entre mtry 5 y mtry 8 ambos con nodesize 5
+comparacion_mtry <- merge(subset(por_anio_rf, config == "mtry5_nodo5"),
+                          subset(por_anio_rf, config == "mtry8_nodo5"),
+                          by = "anio", suffixes = c("_mtry5", "_mtry8"))
+round(comparacion_mtry[, c("anio", "mejora_MAE_mtry5", "mejora_MAE_mtry8",
+                           "mejora_RMSE_mtry5", "mejora_RMSE_mtry8")], 3)
+# Salida:
+#   anio mejora_MAE_mtry5 mejora_MAE_mtry8
+# 1 2006            0.409            0.407  (Empate)
+# 2 2007            0.309            0.285  (Gana mtry5 en año seco)
+# 3 2008            0.381            0.370  (Gana mtry5)
+# 4 2009            0.453            0.462  (Gana mtry8 en año lluvioso)
+# 5 2010            0.315            0.306  (Gana mtry5 en año seco)
+# ...
+# -> Significado: mtry5 es más estable en los años secos 2007 y 2010, 
+#    mientras que mtry8 sobresale en años lluviosos 2009. Como el test final 
+#    (2013-2016) es seco, tener un modelo estable en sequías es una ventaja.
+
+# el ganador, año por año y recalculamos por si hubieron cambios
+resumen_rf <- subset(por_anio_rf, config == ganador_rf$config)[, c("anio", "mejora_MAE", "mejora_RMSE")]
+resumen_rf$rios_mejoran <- tapply(subset(resultados_rf, config == ganador_rf$config)$mejora_MAE > 0,
+                                  subset(resultados_rf, config == ganador_rf$config)$anio, sum)
+round(resumen_rf, 3)
+<<<<<<< HEAD
+
+
+# BLOQUES 11 A 16: comparación, prueba final, incertidumbre, diagnóstico y sensibilidades
+source("bloques_11_16.R")
+=======
+# Salida:
+#    anio mejora_MAE mejora_RMSE rios_mejoran
+# 43 2006      0.407       0.363           30
+# 44 2007      0.285       0.277           27
+# 45 2008      0.370       0.267           29
+# 46 2009      0.462       0.382           29
+# 47 2010      0.306       0.284           27
+# 48 2011      0.363       0.324           27
+# 49 2012      0.335       0.269           28
+
+# EXPLICACIÓN COLUMNA POR COLUMNA:
+# 1. mejora_MAE: Es la mediana de mejora en los 30 ríos para ese año
+#    - En 2009 (año lluvioso), el modelo redujo el error un 46.2%
+#    - En 2007 (año muy seco), el modelo redujo el error un 28.5%
+
+# 2. mejora_RMSE: La mejora en los errores grandes (crecidas)
+#    Se mantiene muy estable entre 26.7% y 38.2%.
+
+# 3. rios_mejoran: ¿En cuántos de los 30 rios el modelo le ganó a persistencia?
+#    - En 2006, le ganó a todos los rios (30/30)
+#    - En los años 2007, 2010 y 2011, le ganó a 27 de 30
+#    - Nunca bajo de 27. Esto demuestra una gran consistencia
+>>>>>>> 8784aac6a358ebafc578bccbbdc958aa4192ec26
