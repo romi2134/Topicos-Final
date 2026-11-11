@@ -1,5 +1,5 @@
 "modelo","mejora_MAE","mejora_RMSE","rios_que_mejoran","dias_evaluados","elegido_en_desarrollo"
-"M3 Random Forest",0.359,0.282,29,41961,TRUE
+"M3 Random Forest",0.351,0.265,29,41961,TRUE
 "M2 GAM",0.256,0.213,27,41961,FALSE
 "M1 ridge/lasso",0.141,0.111,26,41961,FALSE
 "Persistencia",0,0,0,41961,FALSE

@@ -472,7 +472,7 @@ Y como se puede observar, Random Forest fue el que mejor desempeño obtuvo, redu
 mientras que la regresión penalizada solo tuvo una mejora del 14.1%. La referencia estacional nos indicó un error negativo, reafirmando que teniendo conocimiento sobre cuánta agua trae el río hoy es la información más importante para predecir el de mañana.
 Ya habiendo seleccionado el modelo de Random Forest, se evaluó en el conjunto de testeo final que contiene desde el año 2013 hasta el 2016, 
 periodo el cual nuestro modelo nunca vio y que además coincidió con una megasequía en la zona central de nuestro país. 
-La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.9% en MAE y un 28.2% en RMSE frente a la persistencia. 
+La tabla 2 muestra que Random Forest se mantiene como el mejor alcanzando una mejora del 35.1% en MAE y un 26.5% en RMSE frente a la persistencia. 
 En esta misma tabla también se puede observar la columna "Ríos gana" que va a contar en cuántas de las 30 cuencas el modelo superó la persistencia y los "Días evaluados" que sería la cantidad de días con datos válidos que se utilizaron en la comparación. GAM por su parte, 
 obtuvo una mejora del 25.6%, mientras que la regresión penalizada se quedó con un 14.1% de mejora. Estos resultados son muy relevantes para demostrar que nuestro modelo tiene una capacidad predictiva que se mantiene en el tiempo, 
 incluso cuando las condiciones climáticas cambian drásticamente hacia un clima más seco.
@@ -518,7 +518,7 @@ Estacional & -276.3\% & -123.6\% & -439.6\% & 0 \\
 \textbf{Modelo} & \textbf{Mejora MAE} & \textbf{Mejora RMSE} & \textbf{Ríos gana} & \textbf{Días evaluados} \\
 \hline
 % ACTUALIZAR fila M3 tras la nueva corrida
-\textbf{M3 Random Forest} & \textbf{35.9\%} & \textbf{28.2\%} & 29 & 41.961 \\
+\textbf{M3 Random Forest} & \textbf{35.1\%} & \textbf{26.5\%} & 29 & 41.961 \\
 \hline
 M2 GAM & 25.6\% & 21.3\% & 27 & 41.961 \\
 \hline
@@ -552,27 +552,27 @@ Esto nos demuestra que el modelo captura la heterogeneidad de los atributos fís
 \hline
 \textbf{Variable} & \textbf{\%IncMSE (Aumento del error al permutar)} \\
 \hline
-\textbf{cuenca} & \textbf{47.04} \\
+\textbf{cuenca} & \textbf{47.80} \\
 \hline
-log\_Q & 29.37 \\
+log\_Q & 40.42 \\
 \hline
-cambio\_hoy & 28.51 \\
+P & 32.00 \\
 \hline
-mes & 23.12 \\
+cambio\_hoy & 31.18 \\
 \hline
-temp\_7d & 19.95 \\
+mes & 22.71 \\
 \hline
-P & 18.35 \\
+Temp & 15.04 \\
 \hline
-P\_ayer & 13.89 \\
+lluvia\_3d & 14.18 \\
 \hline
-lluvia\_30d & 10.24 \\
+P\_ayer & 9.68 \\
 \hline
-Temp & 9.30 \\
+lluvia\_30d & 9.20 \\
 \hline
-lluvia\_3d & 8.55 \\
+lluvia\_7d & 8.85 \\
 \hline
-lluvia\_7d & 7.53 \\
+temp\_7d & 8.29 \\
 \hline
 \end{tabular}
 \caption{Importancia de las variables en el modelo Random Forest.}
@@ -581,13 +581,23 @@ lluvia\_7d & 7.53 \\
 
 
 
-Para comprender el rendimiento del modelo a nivel geográfico, la figura \ref{fig_altura} grafica la mejora de cada cuenca en la prueba final en función de su altura media. Los puntos azules representan los ríos sin embalses grandes y los naranjos, con embalses. El gráfico muestra un claro patrón de que el modelo rinde excelente en las cuencas menores a 1.000 metros, donde alcanza mejoras de hasta un 50%. 
+Para comprender el rendimiento del modelo a nivel geográfico, la figura \ref{fig-altura} grafica la mejora de cada cuenca en la prueba final en función de su altura media. Los puntos azules representan los ríos sin embalses grandes y los naranjos, con embalses. El gráfico muestra un claro patrón de que el modelo rinde excelente en las cuencas menores a 1.000 metros, donde alcanza mejoras de hasta un 50%. 
 Pero por otro lado, a medida que va aumentando la altura, la mejora disminuye bastante. Ya que las cuencas sobre los 1.500 metros muestran mejoras cercanas a cero. 
-Además para cuantificar la incertidumbre del 35.9% de mejora que se obtuvo en la prueba final, aplicamos un remuestreo con Bootstrap con bloques móviles cada 30 días. 
+Además para cuantificar la incertidumbre del 35.1% de mejora que se obtuvo en la prueba final, aplicamos un remuestreo con Bootstrap con bloques móviles cada 30 días. 
 La figura \ref{fig-altura-bootstrap} muestra el histograma de 1000 réplicas de este proceso. 
-Y la línea vertical negra va a representar nuestro valor observado del 35.9%. 
+Y la línea vertical negra va a representar nuestro valor observado del 35.1%. 
 Asimismo es sumamente importante notar que el cero esta mucho más a la izquierda, 
-confirmando que la ventaja del Random Forest es robusta y no por azar.
+confirmando que la ventaja del Random Forest es robusta.
+
+Para cuantificar la incertidumbre de la mejora observada en la prueba (35,1 %), 
+se aplicó un bootstrap por bloques móviles de 30 días consecutivos con 1000 réplicas. Cada fecha
+ remuestreada conserva las 30 cuencas de ese día, lo que respeta tanto la dependencia temporal como 
+ la simultaneidad entre cuencas (una misma tormenta afecta a varios ríos). El intervalo al 95 % para
+  la mejora mediana en MAE es [30,3 %; 38,5 %], y para el RMSE es [22,4 %; 32,3 %]; ninguna de las 1000 
+  réplicas mostró una mejora menor o igual a cero (Figura \ref{fig-altura-bootstrap}). Las predicciones 
+  se mantuvieron fijas y el modelo no se reajustó, por lo que el intervalo describe la incertidumbre debida
+   a los días de prueba, condicional a los ajustes realizados, y no incluye la incertidumbre de selección 
+   ni de entrenamiento.
 
 \begin{figure}[H]
 \centering
@@ -612,11 +622,12 @@ confirmando que la ventaja del Random Forest es robusta y no por azar.
 Finalmente, al analizar las sensibilidades se confirmaron nuestras desiciones del diseño. 
 Al tratar de predecir el caudal directamente en la escala original, la mejora disminuyó a un 19.6%, esto justifica claramente el uso
 de la transformación logarítmica. Por otro lado, al reemplazar la variable cuenca por atributos como el área, altura y pendiente, el modelo pudo mantener 
-una mejora del 36.3%. Lo cúal demuestra que Random Forest no va a depender de memorizar el nombre o el código del río, sino que puede generalizar correctamente 
-y predecir con una gran precisión las cuencas nuevas que tienen características similares.
+una mejora del 36.3%. Lo cúal demuestra que Random Forest no va a depender de memorizar el nombre o el código del río.
+ Por otro lado, al reemplazar el identificador de cuenca por atributos físicos estables
+  (área, altura media, pendiente, cobertura de bosque, fracción nival, presencia de embalse y latitud), la mejora se mantuvo prácticamente igual
+   (36,3 % frente a 36,6 %). Esto indica que la información que aporta el código de cuenca puede representarse con características físicas, sin depender de una etiqueta arbitraria. Sin embargo, esta sensibilidad se evaluó en días futuros de las mismas 30 cuencas, por lo que no constituye una validación en cuencas sin observaciones.
 
 ## Discusión
-
 Interpreta los hallazgos y comenta sus limitaciones.
 
 ## Reproducibilidad y contribuciones
