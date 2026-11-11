@@ -1215,12 +1215,9 @@ resumen_rf <- subset(por_anio_rf, config == ganador_rf$config)[, c("anio", "mejo
 resumen_rf$rios_mejoran <- tapply(subset(resultados_rf, config == ganador_rf$config)$mejora_MAE > 0,
                                   subset(resultados_rf, config == ganador_rf$config)$anio, sum)
 round(resumen_rf, 3)
-<<<<<<< HEAD
-
-
 # BLOQUES 11 A 16: comparación, prueba final, incertidumbre, diagnóstico y sensibilidades
 source("bloques_11_16.R")
-=======
+
 # Salida:
 #    anio mejora_MAE mejora_RMSE rios_mejoran
 # 43 2006      0.407       0.363           30
@@ -1243,4 +1240,3 @@ source("bloques_11_16.R")
 #    - En 2006, le ganó a todos los rios (30/30)
 #    - En los años 2007, 2010 y 2011, le ganó a 27 de 30
 #    - Nunca bajo de 27. Esto demuestra una gran consistencia
->>>>>>> 8784aac6a358ebafc578bccbbdc958aa4192ec26
